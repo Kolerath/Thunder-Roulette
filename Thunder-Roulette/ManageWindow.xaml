@@ -1,0 +1,69 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Manage Thunder Roulette"
+        Width="760" Height="560" MinWidth="680" MinHeight="500"
+        WindowStartupLocation="CenterOwner" FontFamily="Segoe UI"
+        Background="#17202A">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TabControl Name="ManageTabs">
+            <TabItem Header="Profiles">
+                <Grid Margin="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="220" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <ListBox Name="ManageProfileList" DisplayMemberPath="Name" SelectedValuePath="Id" />
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Name="ManageNewProfileButton" Content="New" Padding="14,7" />
+                        <Button Name="ManageRenameProfileButton" Content="Rename" Padding="14,7" Margin="8,0,0,0" />
+                        <Button Name="ManageDeleteProfileButton" Content="Delete" Padding="14,7" Margin="8,0,0,0" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="24,0,0,0">
+                        <TextBlock Text="PROFILE SETTINGS" FontSize="12" FontWeight="Bold" Foreground="#475569" />
+                        <TextBlock Text="Minimum battle rating" Margin="0,18,0,5" />
+                        <ComboBox Name="ManageMinimumBR" Width="100" HorizontalAlignment="Left" ItemStringFormat="{}{0:F1}" />
+                        <TextBlock Text="Maximum battle rating" Margin="0,14,0,5" />
+                        <ComboBox Name="ManageMaximumBR" Width="100" HorizontalAlignment="Left" ItemStringFormat="{}{0:F1}" />
+                        <CheckBox Name="ManageClearOnExit" Content="Clear nation sequence on exit" Margin="0,20,0,0" />
+                        <TextBlock Text="Settings save automatically for the selected profile." Foreground="#64748B" TextWrapping="Wrap" Margin="0,18,0,0" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Challenges">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <ListBox Name="ManageChallengeList" DisplayMemberPath="Name" />
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Name="AddChallengeButton" Content="Add" Padding="14,7" />
+                        <Button Name="EditChallengeButton" Content="Edit" Padding="14,7" Margin="8,0,0,0" />
+                        <Button Name="DeleteChallengeButton" Content="Delete" Padding="14,7" Margin="8,0,0,0" />
+                        <Button Name="ResetChallengeDeckButton" Content="Reset deck" Padding="14,7" Margin="8,0,0,0" />
+                        <Button Name="RestoreChallengesButton" Content="Restore defaults" Padding="14,7" Margin="8,0,0,0" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Fun Modes">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <ListBox Name="ManageFunModeList" DisplayMemberPath="Name" />
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Name="AddFunModeButton" Content="Add" Padding="14,7" />
+                        <Button Name="EditFunModeButton" Content="Edit" Padding="14,7" Margin="8,0,0,0" />
+                        <Button Name="DeleteFunModeButton" Content="Delete" Padding="14,7" Margin="8,0,0,0" />
+                        <Button Name="ResetFunModeDeckButton" Content="Reset deck" Padding="14,7" Margin="8,0,0,0" />
+                        <Button Name="RestoreFunModesButton" Content="Restore defaults" Padding="14,7" Margin="8,0,0,0" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+        </TabControl>
+        <Button Name="ManageCloseButton" Grid.Row="1" Content="Done" Padding="24,8" HorizontalAlignment="Right" Margin="0,14,0,0" />
+    </Grid>
+</Window>

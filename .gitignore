@@ -1,0 +1,7 @@
+Thunder-Roulette/Data/
+Thunder-Roulette/Original-Nation-Icons/
+dist/
+*.user
+.vs/
+bin/
+obj/
