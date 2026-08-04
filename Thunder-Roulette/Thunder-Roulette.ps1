@@ -163,7 +163,11 @@ function Get-ProfilePaths([string] $profileId) {
         New-Item -ItemType File -Path $funModeQueue | Out-Null
     }
     if (-not (Test-Path -LiteralPath $settings -PathType Leaf)) {
-        @{ ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0 } |
+        @{
+            ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0
+            SessionRollNation = $true; SessionRollBR = $true
+            SessionRollChallenge = $true; SessionRollFunMode = $true
+        } |
             ConvertTo-Json |
             Set-Content -LiteralPath $settings -Encoding UTF8
     }
@@ -181,18 +185,34 @@ function Get-ProfileSettings {
             ClearSequenceOnExit = $clearOnExit
             MinimumBR = $minimumBR
             MaximumBR = $maximumBR
+            SessionRollNation = if ($saved.PSObject.Properties['SessionRollNation']) { [bool]$saved.SessionRollNation } else { $true }
+            SessionRollBR = if ($saved.PSObject.Properties['SessionRollBR']) { [bool]$saved.SessionRollBR } else { $true }
+            SessionRollChallenge = if ($saved.PSObject.Properties['SessionRollChallenge']) { [bool]$saved.SessionRollChallenge } else { $true }
+            SessionRollFunMode = if ($saved.PSObject.Properties['SessionRollFunMode']) { [bool]$saved.SessionRollFunMode } else { $true }
         }
     }
     catch {
-        return [pscustomobject]@{ ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0 }
+        return [pscustomobject]@{
+            ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0
+            SessionRollNation = $true; SessionRollBR = $true
+            SessionRollChallenge = $true; SessionRollFunMode = $true
+        }
     }
 }
 
 function Save-ProfileSettings([bool] $clearSequenceOnExit, [double] $minimumBR, [double] $maximumBR) {
+    $sessionRollNation = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['SessionRollNation']) { [bool]$script:activeSettings.SessionRollNation } else { $true }
+    $sessionRollBR = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['SessionRollBR']) { [bool]$script:activeSettings.SessionRollBR } else { $true }
+    $sessionRollChallenge = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['SessionRollChallenge']) { [bool]$script:activeSettings.SessionRollChallenge } else { $true }
+    $sessionRollFunMode = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['SessionRollFunMode']) { [bool]$script:activeSettings.SessionRollFunMode } else { $true }
     @{
         ClearSequenceOnExit = $clearSequenceOnExit
         MinimumBR = $minimumBR
         MaximumBR = $maximumBR
+        SessionRollNation = $sessionRollNation
+        SessionRollBR = $sessionRollBR
+        SessionRollChallenge = $sessionRollChallenge
+        SessionRollFunMode = $sessionRollFunMode
     } |
         ConvertTo-Json |
         Set-Content -LiteralPath $script:activePaths.Settings -Encoding UTF8
@@ -282,6 +302,7 @@ $window = [Windows.Markup.XamlReader]::Load($reader)
 $profileSelector = $window.FindName('ProfileSelector')
 $manageButton = $window.FindName('ManageButton')
 $rollButton = $window.FindName('RollButton')
+$rollSessionButton = $window.FindName('RollSessionButton')
 $resetButton = $window.FindName('ResetButton')
 $nationName = $window.FindName('NationName')
 $nationImage = $window.FindName('NationImage')
@@ -298,6 +319,16 @@ $rollFunModeButton = $window.FindName('RollFunModeButton')
 $funModeName = $window.FindName('FunModeName')
 $funModeRule = $window.FindName('FunModeRule')
 $funModeRemainingText = $window.FindName('FunModeRemainingText')
+
+$updateRollSessionAvailability = {
+    $enabledCount = @(
+        $script:activeSettings.SessionRollNation,
+        $script:activeSettings.SessionRollBR,
+        $script:activeSettings.SessionRollChallenge,
+        $script:activeSettings.SessionRollFunMode
+    ) | Where-Object { $_ }
+    $rollSessionButton.IsEnabled = @($enabledCount).Count -gt 0
+}
 
 $backgroundPath = Join-Path $appRoot 'Assets\Thunder-Roulette-Background.png'
 $window.Background = [System.Windows.Media.ImageBrush]@{
@@ -362,6 +393,7 @@ $setActiveProfile = {
     $script:activeSettings = Get-ProfileSettings
     Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
     $brRangeText.Text = ('Range {0:N1}-{1:N1}' -f $script:activeSettings.MinimumBR, $script:activeSettings.MaximumBR)
+    & $updateRollSessionAvailability
     $nationName.Text = 'Ready?'
     $brResult.Text = [string][char]0x2014
     $challengeName.Text = 'No challenge drawn'
@@ -415,7 +447,13 @@ $manageButton.Add_Click({
     $manageDeleteButton = $manageWindow.FindName('ManageDeleteProfileButton')
     $manageMinimumBR = $manageWindow.FindName('ManageMinimumBR')
     $manageMaximumBR = $manageWindow.FindName('ManageMaximumBR')
+    $manageResetBRButton = $manageWindow.FindName('ManageResetBRButton')
     $manageClearOnExit = $manageWindow.FindName('ManageClearOnExit')
+    $sessionRollNation = $manageWindow.FindName('SessionRollNation')
+    $sessionRollBR = $manageWindow.FindName('SessionRollBR')
+    $sessionRollChallenge = $manageWindow.FindName('SessionRollChallenge')
+    $sessionRollFunMode = $manageWindow.FindName('SessionRollFunMode')
+    $sessionModulesHint = $manageWindow.FindName('SessionModulesHint')
     $manageChallengeList = $manageWindow.FindName('ManageChallengeList')
     $manageFunModeList = $manageWindow.FindName('ManageFunModeList')
     $addChallengeButton = $manageWindow.FindName('AddChallengeButton')
@@ -457,6 +495,16 @@ $manageButton.Add_Click({
         $manageMinimumBR.SelectedItem = [double]$script:activeSettings.MinimumBR
         $manageMaximumBR.SelectedItem = [double]$script:activeSettings.MaximumBR
         $manageClearOnExit.IsChecked = [bool]$script:activeSettings.ClearSequenceOnExit
+        $sessionRollNation.IsChecked = [bool]$script:activeSettings.SessionRollNation
+        $sessionRollBR.IsChecked = [bool]$script:activeSettings.SessionRollBR
+        $sessionRollChallenge.IsChecked = [bool]$script:activeSettings.SessionRollChallenge
+        $sessionRollFunMode.IsChecked = [bool]$script:activeSettings.SessionRollFunMode
+        $sessionModulesHint.Visibility = if ($rollSessionButton.IsEnabled) {
+            [System.Windows.Visibility]::Collapsed
+        }
+        else {
+            [System.Windows.Visibility]::Visible
+        }
         $script:manageChanging = $false
     }
 
@@ -540,6 +588,27 @@ $manageButton.Add_Click({
         & $saveManageSettings
     })
     $manageClearOnExit.Add_Click({ & $saveManageSettings })
+    $manageResetBRButton.Add_Click({ $brResult.Text = [string][char]0x2014 })
+
+    $saveSessionModules = {
+        if ($script:manageChanging) { return }
+        $script:activeSettings.SessionRollNation = [bool]$sessionRollNation.IsChecked
+        $script:activeSettings.SessionRollBR = [bool]$sessionRollBR.IsChecked
+        $script:activeSettings.SessionRollChallenge = [bool]$sessionRollChallenge.IsChecked
+        $script:activeSettings.SessionRollFunMode = [bool]$sessionRollFunMode.IsChecked
+        Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
+        & $updateRollSessionAvailability
+        $sessionModulesHint.Visibility = if ($rollSessionButton.IsEnabled) {
+            [System.Windows.Visibility]::Collapsed
+        }
+        else {
+            [System.Windows.Visibility]::Visible
+        }
+    }
+    $sessionRollNation.Add_Click({ & $saveSessionModules })
+    $sessionRollBR.Add_Click({ & $saveSessionModules })
+    $sessionRollChallenge.Add_Click({ & $saveSessionModules })
+    $sessionRollFunMode.Add_Click({ & $saveSessionModules })
 
     $addChallengeButton.Add_Click({
         $name = [Microsoft.VisualBasic.Interaction]::InputBox('Challenge name:', 'Add challenge', '').Trim()
@@ -634,12 +703,12 @@ $manageButton.Add_Click({
     $null = $manageWindow.ShowDialog()
 })
 
-$rollButton.Add_Click({
+$rollNation = {
     $selectedNation = Get-NextNation
     $nationName.Text = $selectedNation
     $nationImage.Source = New-BitmapImage (Join-Path $appRoot "Assets\NationIcons\$($nations[$selectedNation])")
     & $updateRemainingText
-})
+}
 
 $resetButton.Add_Click({
     Reset-NationQueue
@@ -648,27 +717,38 @@ $resetButton.Add_Click({
     & $updateRemainingText
 })
 
-$rollBRButton.Add_Click({
+$rollBattleRating = {
     $availableStages = @($brStages | Where-Object {
         $_ -ge [double]$script:activeSettings.MinimumBR -and
         $_ -le [double]$script:activeSettings.MaximumBR
     })
     $brResult.Text = ('{0:N1}' -f ($availableStages | Get-Random))
-})
+}
 
-$rollChallengeButton.Add_Click({
+$rollChallenge = {
     $challenge = Get-NextChallenge
     $challengeName.Text = $challenge.Name
     $challengeObjective.Text = $challenge.Objective
     $challengeReward.Text = "SUCCESS: $($challenge.Reward)"
     & $updateChallengeRemainingText
-})
+}
 
-$rollFunModeButton.Add_Click({
+$rollFunMode = {
     $funMode = Get-NextFunMode
     $funModeName.Text = $funMode.Name
     $funModeRule.Text = $funMode.Rule
     & $updateFunModeRemainingText
+}
+
+$rollButton.Add_Click({ & $rollNation })
+$rollBRButton.Add_Click({ & $rollBattleRating })
+$rollChallengeButton.Add_Click({ & $rollChallenge })
+$rollFunModeButton.Add_Click({ & $rollFunMode })
+$rollSessionButton.Add_Click({
+    if ($script:activeSettings.SessionRollNation) { & $rollNation }
+    if ($script:activeSettings.SessionRollBR) { & $rollBattleRating }
+    if ($script:activeSettings.SessionRollChallenge) { & $rollChallenge }
+    if ($script:activeSettings.SessionRollFunMode) { & $rollFunMode }
 })
 
 $window.Add_Closed({
@@ -694,11 +774,15 @@ if ($ValidateOnly) {
     if (-not $rollFunModeButton -or -not $funModeName -or -not $funModeRule) {
         throw 'Fun-mode controls did not initialize correctly.'
     }
+    if (-not $rollSessionButton) {
+        throw 'Roll Session control did not initialize correctly.'
+    }
     [xml]$validationManageXaml = Get-Content -LiteralPath $manageXamlFile -Raw
     $validationManageReader = [System.Xml.XmlNodeReader]::new($validationManageXaml)
     $validationManageWindow = [Windows.Markup.XamlReader]::Load($validationManageReader)
     foreach ($controlName in @(
-        'ManageProfileList', 'ManageMinimumBR', 'ManageMaximumBR',
+        'ManageProfileList', 'ManageMinimumBR', 'ManageMaximumBR', 'ManageResetBRButton',
+        'SessionRollNation', 'SessionRollBR', 'SessionRollChallenge', 'SessionRollFunMode',
         'ManageChallengeList', 'AddChallengeButton', 'EditChallengeButton', 'DeleteChallengeButton', 'RestoreChallengesButton',
         'ManageFunModeList', 'AddFunModeButton', 'EditFunModeButton', 'DeleteFunModeButton', 'RestoreFunModesButton',
         'ManageCloseButton'

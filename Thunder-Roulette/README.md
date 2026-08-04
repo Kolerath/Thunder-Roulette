@@ -22,6 +22,13 @@ The separate fun-mode deck draws lineup and playstyle constraints, such as light
 tanks only, derp guns, aggressive SPAA, or a same-vehicle squad. It also uses an
 independent no-repeat deck for every profile.
 
+Use **ROLL SESSION** to draw a nation, battle rating, challenge, and fun mode in
+one click. Every category can still be rerolled individually afterward.
+The Manage window's **Roll Session** tab controls which modules that button rolls
+for each profile.
+The BR result can be cleared from the profile settings in Manage without changing
+the configured range.
+
 Use **Manage** to create, rename, or delete profiles and configure their BR range
 and exit behavior. Selecting a profile on the main screen immediately switches
 to that person's saved sequence. The final remaining profile cannot be deleted.
@@ -33,9 +40,14 @@ Cards can be added, edited, or deleted; either library can be restored to its
 shipped defaults. Resetting a deck only clears the selected profile's draw order
 and does not alter the card library.
 
-## Run it
+## Launch the packaged app
 
-Double-click `Start-Thunder-Roulette.cmd`, or run:
+Double-click `Thunder-Roulette.exe`.
+
+## Run from source
+
+If you downloaded the source code instead of a packaged release, double-click
+`Start-Thunder-Roulette.cmd`, or run:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\Thunder-Roulette.ps1

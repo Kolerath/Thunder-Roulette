@@ -32,10 +32,29 @@
                         <ComboBox Name="ManageMinimumBR" Width="100" HorizontalAlignment="Left" ItemStringFormat="{}{0:F1}" />
                         <TextBlock Text="Maximum battle rating" Margin="0,14,0,5" />
                         <ComboBox Name="ManageMaximumBR" Width="100" HorizontalAlignment="Left" ItemStringFormat="{}{0:F1}" />
+                        <Button Name="ManageResetBRButton"
+                                Content="Clear displayed BR"
+                                Padding="14,7"
+                                HorizontalAlignment="Left"
+                                Margin="0,18,0,0" />
                         <CheckBox Name="ManageClearOnExit" Content="Clear nation sequence on exit" Margin="0,20,0,0" />
                         <TextBlock Text="Settings save automatically for the selected profile." Foreground="#64748B" TextWrapping="Wrap" Margin="0,18,0,0" />
                     </StackPanel>
                 </Grid>
+            </TabItem>
+            <TabItem Header="Roll Session">
+                <StackPanel Margin="22">
+                    <TextBlock Text="ROLL SESSION MODULES" FontSize="12" FontWeight="Bold" Foreground="#475569" />
+                    <TextBlock Text="Choose which modules the main ROLL SESSION button includes for this profile. Individual roll buttons are unaffected."
+                               TextWrapping="Wrap" Foreground="#64748B" Margin="0,8,0,20" />
+                    <CheckBox Name="SessionRollNation" Content="Roll nation" FontSize="15" Margin="0,0,0,14" />
+                    <CheckBox Name="SessionRollBR" Content="Roll battle rating" FontSize="15" Margin="0,0,0,14" />
+                    <CheckBox Name="SessionRollChallenge" Content="Draw challenge" FontSize="15" Margin="0,0,0,14" />
+                    <CheckBox Name="SessionRollFunMode" Content="Draw fun mode" FontSize="15" />
+                    <TextBlock Name="SessionModulesHint"
+                               Text="Enable at least one module to use ROLL SESSION."
+                               Foreground="#B45309" FontWeight="SemiBold" Margin="0,24,0,0" Visibility="Collapsed" />
+                </StackPanel>
             </TabItem>
             <TabItem Header="Challenges">
                 <Grid Margin="16">
