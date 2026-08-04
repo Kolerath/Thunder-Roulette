@@ -8,6 +8,8 @@ player profiles.
 ## Features
 
 - No-repeat nation, challenge, and fun-mode decks
+- One-click complete session rolls with individual rerolls
+- Per-profile control over which modules Roll Session includes
 - Per-profile battle-rating ranges and saved state
 - Profile creation, renaming, archival deletion, and deck management
 - Persistent editors for custom challenges and fun modes

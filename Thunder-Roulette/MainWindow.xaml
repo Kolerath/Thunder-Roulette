@@ -184,6 +184,16 @@
                 </Border>
                 </Grid>
 
+                <Button Name="RollSessionButton"
+                        Grid.Row="3"
+                        Content="ROLL SESSION"
+                        Height="46"
+                        FontSize="17"
+                        FontWeight="Bold"
+                        Background="#FFCF55"
+                        Foreground="#17202A"
+                        BorderThickness="0" />
+
             </Grid>
         </Border>
     </Grid>
