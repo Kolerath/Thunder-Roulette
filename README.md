@@ -28,6 +28,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File .\Thunder-Roulette\
 Runtime profiles and edited content are created under `Thunder-Roulette/Data`
 and are intentionally excluded from version control.
 
+## Windows security notice
+
+The packaged executable is not digitally signed. Windows may therefore display
+an unknown-publisher or Microsoft Defender SmartScreen warning when it is first
+launched. The PowerShell source is included in this repository for inspection.
+
 ## Disclaimer
 
 Thunder Roulette is an unofficial fan-made tool. It is not affiliated with,
@@ -36,3 +42,9 @@ its respective owner.
 
 The application artwork is original AI-assisted imagery created specifically for
 this project and does not contain extracted game assets.
+
+## License
+
+Thunder Roulette's original code and project assets are available under the
+[MIT License](LICENSE). War Thunder and related trademarks remain the property
+of their respective owners.
