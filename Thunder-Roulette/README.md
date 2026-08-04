@@ -44,6 +44,9 @@ and does not alter the card library.
 
 Double-click `Thunder-Roulette.exe`.
 
+The executable is not digitally signed, so Windows may display an
+unknown-publisher or Microsoft Defender SmartScreen warning on first launch.
+
 ## Run from source
 
 If you downloaded the source code instead of a packaged release, double-click
