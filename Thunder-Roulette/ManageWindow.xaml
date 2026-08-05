@@ -1,7 +1,7 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Manage Thunder Roulette"
-        Width="760" Height="560" MinWidth="680" MinHeight="500"
+        Width="920" Height="680" MinWidth="820" MinHeight="600"
         WindowStartupLocation="CenterOwner" FontFamily="Segoe UI"
         Background="#17202A">
     <Grid Margin="20">
@@ -32,8 +32,12 @@
                         <ComboBox Name="ManageMinimumBR" Width="100" HorizontalAlignment="Left" ItemStringFormat="{}{0:F1}" />
                         <TextBlock Text="Maximum battle rating" Margin="0,14,0,5" />
                         <ComboBox Name="ManageMaximumBR" Width="100" HorizontalAlignment="Left" ItemStringFormat="{}{0:F1}" />
+                        <TextBlock Text="Weapon campaign track" Margin="0,14,0,5" />
+                        <ComboBox Name="ManageCampaignTrack" DisplayMemberPath="Name" SelectedValuePath="Id" Height="30" />
+                        <TextBlock Text="Current weapon stage" Margin="0,10,0,5" />
+                        <ComboBox Name="ManageCampaignStage" DisplayMemberPath="Label" Height="30" />
                         <Button Name="ManageResetBRButton"
-                                Content="Clear displayed BR"
+                                Content="Reset BR sequence"
                                 Padding="14,7"
                                 HorizontalAlignment="Left"
                                 Margin="0,18,0,0" />
@@ -55,6 +59,66 @@
                                Text="Enable at least one module to use ROLL SESSION."
                                Foreground="#B45309" FontWeight="SemiBold" Margin="0,24,0,0" Visibility="Collapsed" />
                 </StackPanel>
+            </TabItem>
+            <TabItem Header="Progression">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="PROGRESSION TRACK" FontSize="12" FontWeight="Bold" Foreground="#475569" />
+                            <ComboBox Name="ManageProgressionTrack" DisplayMemberPath="Name" SelectedValuePath="Id"
+                                      Height="32" Margin="0,7,12,0" />
+                        </StackPanel>
+                        <TextBlock Name="ProgressionSourceText" Grid.Column="1" Foreground="#64748B"
+                                   VerticalAlignment="Bottom" Margin="0,0,0,7" />
+                    </Grid>
+                    <ListBox Name="ManageProgressionStageList" Grid.Row="1" DisplayMemberPath="Label" Margin="0,14,0,0" />
+                    <WrapPanel Grid.Row="2" Margin="0,10,0,0">
+                        <Button Name="AddExactStageButton" Content="Add exact" Padding="12,7" />
+                        <Button Name="AddRangeStageButton" Content="Add range" Padding="12,7" Margin="8,0,0,0" />
+                        <Button Name="EditStageButton" Content="Edit" Padding="12,7" Margin="8,0,0,0" />
+                        <Button Name="ToggleStageButton" Content="Enable / disable" Padding="12,7" Margin="8,0,0,0" />
+                        <Button Name="MoveStageUpButton" Content="Up" Padding="12,7" Margin="8,0,0,0" />
+                        <Button Name="MoveStageDownButton" Content="Down" Padding="12,7" Margin="8,0,0,0" />
+                        <Button Name="DeleteStageButton" Content="Delete" Padding="12,7" Margin="8,0,0,0" />
+                        <Button Name="RestoreProgressionButton" Content="Restore catalog" Padding="12,7" Margin="8,0,0,0" />
+                    </WrapPanel>
+                </Grid>
+            </TabItem>
+            <TabItem Header="History">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="SESSION HISTORY" FontSize="12" FontWeight="Bold" Foreground="#475569" />
+                        <TextBlock Name="ManageHistorySummary" Foreground="#64748B" Margin="0,5,0,0" />
+                    </StackPanel>
+                    <ListBox Name="ManageHistoryList" Grid.Row="1" Margin="0,12,0,0" HorizontalContentAlignment="Stretch">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4,5">
+                                    <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Detail}" Foreground="#475569" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Attempts}" Foreground="#334155" Margin="0,5,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Notes}" Foreground="#7C3AED" FontStyle="Italic" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button Name="ClearHistoryButton" Grid.Row="2" Content="Clear profile history" Padding="14,7"
+                            HorizontalAlignment="Left" Margin="0,10,0,0" />
+                </Grid>
             </TabItem>
             <TabItem Header="Challenges">
                 <Grid Margin="16">
