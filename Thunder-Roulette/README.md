@@ -15,6 +15,8 @@ the app remembers the last selected profile.
 Each profile also stores a minimum and maximum battle rating. **Roll BR** chooses
 a valid War Thunder BR stage (`.0`, `.3`, or `.7`) inside that range. BR stages
 use a persistent shuffled sequence and do not repeat until the range is exhausted.
+Profiles may instead use **Whole BR bracket** mode, which draws ranges such as
+`4.0-4.7`; boundary brackets are clipped to the configured minimum and maximum.
 
 The built-in challenge deck contains structured objectives and rewards. Challenges
 do not repeat until that profile has exhausted its own deck.
@@ -50,13 +52,20 @@ be recovered manually.
 Manage also provides persistent editors for the Challenge and Fun Mode libraries.
 Cards can be added, edited, or deleted; either library can be restored to its
 shipped defaults. Resetting a deck only clears the selected profile's draw order
-and does not alter the card library.
+and does not alter the card library. **Use selected** places a highlighted
+Challenge or Fun Mode directly on the main window without drawing from its deck.
+
+The shipped Caliber Climb challenge requires three kills at the current weapon
+stage. Challenge punishments are limited to the same progression family as their
+success reward, preventing BR and weapon-stage movement from conflicting. A
+`+1.0` BR reward pairs with a `-1.0` failure punishment in Specific BR mode;
+both map to one whole bracket when bracket rolling is active.
 
 The Progression tab provides editable Air, Ground, and Naval campaigns with
 separate Gun, Rocket, and Missile tracks. Exact diameters and user-defined ranges
 can be added, reordered, enabled, disabled, or restored from the shipped catalog.
 
-For illustrated instructions, open `Thunder-Roulette-v1.4-User-Guide.pdf`.
+For illustrated instructions, open `Thunder-Roulette-v1.5-User-Guide.pdf`.
 
 ## Launch the packaged app
 
@@ -64,6 +73,24 @@ Double-click `Thunder-Roulette.exe`.
 
 The executable is not digitally signed, so Windows may display an
 unknown-publisher or Microsoft Defender SmartScreen warning on first launch.
+
+## Upgrade from an earlier release
+
+1. Close Thunder Roulette completely.
+2. Make a backup copy of the old installation's `Data` folder. It contains your
+   profiles, settings, custom challenges and fun modes, campaign progress, and
+   session history.
+3. Extract the new release into a new folder instead of directly overwriting the
+   old installation.
+4. Copy the backed-up `Data` folder into the new `Thunder-Roulette` folder, beside
+   `Thunder-Roulette.exe`. Replace the new empty `Data` folder if one was created
+   by launching the new version first.
+5. Launch the new executable and confirm your profiles and history are present.
+
+Thunder Roulette migrates supported older profile and history formats when they
+are loaded. Keep the old installation or backup until the upgraded version has
+been checked. Do not copy only individual files from inside `Data`, and do not
+place the new application files inside `Data`.
 
 ## Run from source
 
