@@ -51,7 +51,7 @@ $brStages = @(
 )
 
 $challenges = @(
-    [pscustomobject]@{ Id='caliber-climb'; Name='Caliber Climb'; Objective='Complete the challenge using your current campaign caliber.'; Reward='Advance one weapon stage.'; Trackers=@([pscustomobject]@{Id='order';Label='Completed the caliber challenge';Type='Checkbox';Target=1;Required=$true}); RewardAction=[pscustomobject]@{Type='TrackSteps';Steps=1}; FailureAction=[pscustomobject]@{Type='None';Steps=0} }
+    [pscustomobject]@{ Id='caliber-climb'; Name='Caliber Climb'; Objective='Get 3 kills using your current campaign caliber.'; Reward='Advance one weapon stage.'; Trackers=@([pscustomobject]@{Id='caliber-kills';Label='Kills with the current caliber';Type='Counter';Target=3;Required=$true}); RewardAction=[pscustomobject]@{Type='TrackSteps';Steps=1}; FailureAction=[pscustomobject]@{Type='None';Steps=0} }
     [pscustomobject]@{ Id='combined-arms'; Name='Combined Arms'; Objective='Get 2 tank kills and 1 plane kill in the same match.'; Reward='Advance one BR stage.'; Trackers=@([pscustomobject]@{Id='tank-kills';Label='Tank kills';Type='Counter';Target=2;Required=$true},[pscustomobject]@{Id='plane-kills';Label='Plane kills';Type='Counter';Target=1;Required=$true}); RewardAction=[pscustomobject]@{Type='BRSteps';Steps=1} }
     [pscustomobject]@{ Id='triple-role'; Name='Three Roles'; Objective='Earn a kill with three different vehicle classes.'; Reward='Advance one BR stage.'; Trackers=@([pscustomobject]@{Id='roles';Label='Vehicle classes with a kill';Type='Counter';Target=3;Required=$true}); RewardAction=[pscustomobject]@{Type='BRSteps';Steps=1} }
     [pscustomobject]@{ Id='zone-keeper'; Name='Zone Keeper'; Objective='Capture a zone, then destroy an enemy while defending it.'; Reward='Reroll your nation if desired.'; Trackers=@([pscustomobject]@{Id='capture';Label='Captured a zone';Type='Checkbox';Target=1;Required=$true},[pscustomobject]@{Id='defence';Label='Defensive kill';Type='Checkbox';Target=1;Required=$true}); RewardAction=[pscustomobject]@{Type='None';Steps=0} }
@@ -86,8 +86,10 @@ function ConvertTo-Challenge($challenge) {
         $challenge.PSObject.Properties['RewardAction'] -and
         [string]$challenge.RewardAction.Type -eq 'None'
     $hasTrackers = $challenge.PSObject.Properties['Trackers'] -and @($challenge.Trackers).Count -gt 0
+    $legacyCaliberTracker = [string]$challenge.Id -eq 'caliber-climb' -and $hasTrackers -and
+        @($challenge.Trackers).Count -eq 1 -and [string]$challenge.Trackers[0].Id -eq 'order'
     $legacyGenericTracker = $hasTrackers -and $default.Count -gt 0 -and @($challenge.Trackers).Count -eq 1 -and [string]$challenge.Trackers[0].Id -eq 'complete' -and [string]$default[0].Trackers[0].Id -ne 'complete'
-    $trackers = if ($legacyGenericTracker) {
+    $trackers = if ($legacyGenericTracker -or $legacyCaliberTracker) {
         @(($default[0].Trackers | ConvertTo-Json -Depth 5 | ConvertFrom-Json))
     }
     elseif ($hasTrackers) {
@@ -126,19 +128,31 @@ function ConvertTo-Challenge($challenge) {
         [pscustomobject]@{ Type='None'; Steps=0 }
     }
     $failureAction = if ($challenge.PSObject.Properties['FailureAction']) { $challenge.FailureAction } else { [pscustomobject]@{ Type='None'; Steps=0 } }
+    $normalizedRewardType = if ([string]$rewardAction.Type -in @('BRSteps','TrackSteps')) { [string]$rewardAction.Type } else { 'None' }
+    $normalizedRewardSteps = if ($rewardAction.PSObject.Properties['Steps']) { [math]::Max(0, [int]$rewardAction.Steps) } else { 0 }
+    $normalizedFailureType = switch ([string]$failureAction.Type) {
+        'BRStepsDown' { if ($normalizedRewardType -eq 'BRSteps') { 'BRStepsDown' } else { 'None' } }
+        'TrackStepsDown' { if ($normalizedRewardType -eq 'TrackSteps') { 'TrackStepsDown' } else { 'None' } }
+        default { 'None' }
+    }
+    $normalizedFailureSteps = if ($normalizedFailureType -eq 'BRStepsDown') {
+        if ($normalizedRewardSteps -ge 3) { 3 } else { 1 }
+    }
+    elseif ($normalizedFailureType -eq 'TrackStepsDown') { 1 }
+    else { 0 }
     return [pscustomobject]@{
         Id = [string]$challenge.Id; Name = [string]$challenge.Name
         RecordingMode = if ($challenge.PSObject.Properties['RecordingMode'] -and [string]$challenge.RecordingMode -eq 'Simple') { 'Simple' } else { 'Detailed' }
-        Objective = if ($legacyCaliberReward) { [string]$default[0].Objective } else { [string]$challenge.Objective }
-        Reward = if ($legacyCaliberReward) { [string]$default[0].Reward } else { [string]$challenge.Reward }
+        Objective = if ($legacyCaliberReward -or $legacyCaliberTracker) { [string]$default[0].Objective } else { [string]$challenge.Objective }
+        Reward = if ($legacyCaliberReward -or $legacyCaliberTracker) { [string]$default[0].Reward } else { [string]$challenge.Reward }
         Trackers = $normalTrackers
         RewardAction = [pscustomobject]@{
-            Type = if ([string]$rewardAction.Type -in @('BRSteps','TrackSteps')) { [string]$rewardAction.Type } else { 'None' }
-            Steps = if ($rewardAction.PSObject.Properties['Steps']) { [math]::Max(0, [int]$rewardAction.Steps) } else { 0 }
+            Type = $normalizedRewardType
+            Steps = $normalizedRewardSteps
         }
         FailureAction = [pscustomobject]@{
-            Type = if ([string]$failureAction.Type -in @('BRStepsDown','TrackStepsDown')) { [string]$failureAction.Type } else { 'None' }
-            Steps = if ($failureAction.PSObject.Properties['Steps']) { [math]::Max(0, [int]$failureAction.Steps) } else { 0 }
+            Type = $normalizedFailureType
+            Steps = $normalizedFailureSteps
         }
     }
 }
@@ -331,6 +345,7 @@ function Get-ProfilePaths([string] $profileId) {
     $challengeQueue = Join-Path $directory 'challenge-queue.txt'
     $funModeQueue = Join-Path $directory 'fun-mode-queue.txt'
     $brQueue = Join-Path $directory 'br-queue.txt'
+    $brBracketQueue = Join-Path $directory 'br-bracket-queue.txt'
     $settings = Join-Path $directory 'settings.json'
     $sessionHistory = Join-Path $directory 'session-history.json'
 
@@ -346,21 +361,24 @@ function Get-ProfilePaths([string] $profileId) {
     if (-not (Test-Path -LiteralPath $brQueue -PathType Leaf)) {
         New-Item -ItemType File -Path $brQueue | Out-Null
     }
+    if (-not (Test-Path -LiteralPath $brBracketQueue -PathType Leaf)) {
+        New-Item -ItemType File -Path $brBracketQueue | Out-Null
+    }
     if (-not (Test-Path -LiteralPath $sessionHistory -PathType Leaf)) {
         '[]' | Set-Content -LiteralPath $sessionHistory -Encoding UTF8
     }
     if (-not (Test-Path -LiteralPath $settings -PathType Leaf)) {
         @{
-            ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0
+            ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0; BRRollMode = 'Exact'
             SessionRollNation = $true; SessionRollBR = $true
             SessionRollChallenge = $true; SessionRollFunMode = $true
-            CampaignTrackId = 'ground-gun'; CampaignStageIndex = 0; CampaignBR = 1.0; CurrentChallengeId = ''
+            CampaignTrackId = 'ground-gun'; CampaignStageIndex = 0; CampaignBR = 1.0; CurrentBRResult = ''; CurrentChallengeId = ''
         } |
             ConvertTo-Json |
             Set-Content -LiteralPath $settings -Encoding UTF8
     }
 
-    return [pscustomobject]@{ Queue = $queue; BRQueue = $brQueue; ChallengeQueue = $challengeQueue; FunModeQueue = $funModeQueue; Settings = $settings; SessionHistory = $sessionHistory }
+    return [pscustomobject]@{ Queue = $queue; BRQueue = $brQueue; BRBracketQueue = $brBracketQueue; ChallengeQueue = $challengeQueue; FunModeQueue = $funModeQueue; Settings = $settings; SessionHistory = $sessionHistory }
 }
 
 function Get-ProfileSettings {
@@ -373,6 +391,7 @@ function Get-ProfileSettings {
             ClearSequenceOnExit = $clearOnExit
             MinimumBR = $minimumBR
             MaximumBR = $maximumBR
+            BRRollMode = if ($saved.PSObject.Properties['BRRollMode'] -and [string]$saved.BRRollMode -eq 'Bracket') { 'Bracket' } else { 'Exact' }
             SessionRollNation = if ($saved.PSObject.Properties['SessionRollNation']) { [bool]$saved.SessionRollNation } else { $true }
             SessionRollBR = if ($saved.PSObject.Properties['SessionRollBR']) { [bool]$saved.SessionRollBR } else { $true }
             SessionRollChallenge = if ($saved.PSObject.Properties['SessionRollChallenge']) { [bool]$saved.SessionRollChallenge } else { $true }
@@ -380,15 +399,16 @@ function Get-ProfileSettings {
             CampaignTrackId = if ($saved.PSObject.Properties['CampaignTrackId']) { [string]$saved.CampaignTrackId } else { 'ground-gun' }
             CampaignStageIndex = if ($saved.PSObject.Properties['CampaignStageIndex']) { [math]::Max(0, [int]$saved.CampaignStageIndex) } else { 0 }
             CampaignBR = if ($saved.PSObject.Properties['CampaignBR']) { [double]$saved.CampaignBR } else { $minimumBR }
+            CurrentBRResult = if ($saved.PSObject.Properties['CurrentBRResult']) { [string]$saved.CurrentBRResult } else { '' }
             CurrentChallengeId = if ($saved.PSObject.Properties['CurrentChallengeId']) { [string]$saved.CurrentChallengeId } else { '' }
         }
     }
     catch {
         return [pscustomobject]@{
-            ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0
+            ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0; BRRollMode = 'Exact'
             SessionRollNation = $true; SessionRollBR = $true
             SessionRollChallenge = $true; SessionRollFunMode = $true
-            CampaignTrackId = 'ground-gun'; CampaignStageIndex = 0; CampaignBR = 1.0; CurrentChallengeId = ''
+            CampaignTrackId = 'ground-gun'; CampaignStageIndex = 0; CampaignBR = 1.0; CurrentBRResult = ''; CurrentChallengeId = ''
         }
     }
 }
@@ -401,11 +421,14 @@ function Save-ProfileSettings([bool] $clearSequenceOnExit, [double] $minimumBR, 
     $campaignTrackId = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['CampaignTrackId']) { [string]$script:activeSettings.CampaignTrackId } else { 'ground-gun' }
     $campaignStageIndex = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['CampaignStageIndex']) { [int]$script:activeSettings.CampaignStageIndex } else { 0 }
     $campaignBR = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['CampaignBR']) { [double]$script:activeSettings.CampaignBR } else { $minimumBR }
+    $currentBRResult = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['CurrentBRResult']) { [string]$script:activeSettings.CurrentBRResult } else { '' }
     $currentChallengeId = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['CurrentChallengeId']) { [string]$script:activeSettings.CurrentChallengeId } else { '' }
+    $brRollMode = if ($script:activeSettings -and [string]$script:activeSettings.BRRollMode -eq 'Bracket') { 'Bracket' } else { 'Exact' }
     @{
         ClearSequenceOnExit = $clearSequenceOnExit
         MinimumBR = $minimumBR
         MaximumBR = $maximumBR
+        BRRollMode = $brRollMode
         SessionRollNation = $sessionRollNation
         SessionRollBR = $sessionRollBR
         SessionRollChallenge = $sessionRollChallenge
@@ -413,60 +436,109 @@ function Save-ProfileSettings([bool] $clearSequenceOnExit, [double] $minimumBR, 
         CampaignTrackId = $campaignTrackId
         CampaignStageIndex = $campaignStageIndex
         CampaignBR = $campaignBR
+        CurrentBRResult = $currentBRResult
         CurrentChallengeId = $currentChallengeId
     } |
         ConvertTo-Json |
         Set-Content -LiteralPath $script:activePaths.Settings -Encoding UTF8
 }
 
+function Get-CampaignBRDisplay {
+    if ([string]$script:activeSettings.BRRollMode -eq 'Bracket') {
+        $bracket = @(Get-ValidBRBrackets | Where-Object { [double]$_.Minimum -eq [double]$script:activeSettings.CampaignBR } | Select-Object -First 1)
+        if ($bracket.Count -gt 0) { return [string]$bracket[0].Label }
+    }
+    return '{0:N1}' -f [double]$script:activeSettings.CampaignBR
+}
+
 function Invoke-CampaignSuccess($challenge, $enabledStages, [bool] $battleRatingWasRolled) {
     $action = $challenge.RewardAction
+    $brDisplay = Get-CampaignBRDisplay
+    $campaignComplete = $false
     if ($action.Type -eq 'BRSteps' -and [int]$action.Steps -gt 0) {
-        $availableBRStages = @($brStages | Where-Object { $_ -ge [double]$script:activeSettings.MinimumBR -and $_ -le [double]$script:activeSettings.MaximumBR })
-        $currentBRIndex = [array]::IndexOf($availableBRStages, [double]$script:activeSettings.CampaignBR)
-        if ($currentBRIndex -lt 0) {
-            $nearestBR = @($availableBRStages | Sort-Object { [math]::Abs($_ - [double]$script:activeSettings.CampaignBR) })[0]
-            $currentBRIndex = [array]::IndexOf($availableBRStages, $nearestBR)
+        if ([string]$script:activeSettings.BRRollMode -eq 'Bracket') {
+            $availableBrackets = @(Get-ValidBRBrackets)
+            $currentBRIndex = [array]::IndexOf(@($availableBrackets.Minimum), [double]$script:activeSettings.CampaignBR)
+            if ($currentBRIndex -lt 0) {
+                $nearestBracket = @($availableBrackets | Sort-Object { [math]::Abs($_.Minimum - [double]$script:activeSettings.CampaignBR) })[0]
+                $currentBRIndex = [array]::IndexOf(@($availableBrackets.Id), [string]$nearestBracket.Id)
+            }
+            $campaignComplete = $currentBRIndex -eq $availableBrackets.Count - 1
+            $bracketSteps = [math]::Max(1, [math]::Ceiling([int]$action.Steps / 3.0))
+            $nextBRIndex = [math]::Min($availableBrackets.Count - 1, $currentBRIndex + $bracketSteps)
+            $script:activeSettings.CampaignBR = [double]$availableBrackets[$nextBRIndex].Minimum
+            $brDisplay = [string]$availableBrackets[$nextBRIndex].Label
         }
-        $nextBRIndex = [math]::Min($availableBRStages.Count - 1, $currentBRIndex + [int]$action.Steps)
-        $script:activeSettings.CampaignBR = [double]$availableBRStages[$nextBRIndex]
-        $brResult.Text = '{0:N1}' -f $script:activeSettings.CampaignBR
+        else {
+            $availableBRStages = @($brStages | Where-Object { $_ -ge [double]$script:activeSettings.MinimumBR -and $_ -le [double]$script:activeSettings.MaximumBR })
+            $currentBRIndex = [array]::IndexOf($availableBRStages, [double]$script:activeSettings.CampaignBR)
+            if ($currentBRIndex -lt 0) {
+                $nearestBR = @($availableBRStages | Sort-Object { [math]::Abs($_ - [double]$script:activeSettings.CampaignBR) })[0]
+                $currentBRIndex = [array]::IndexOf($availableBRStages, $nearestBR)
+            }
+            $campaignComplete = $currentBRIndex -eq $availableBRStages.Count - 1
+            $nextBRIndex = [math]::Min($availableBRStages.Count - 1, $currentBRIndex + [int]$action.Steps)
+            $script:activeSettings.CampaignBR = [double]$availableBRStages[$nextBRIndex]
+            $brDisplay = '{0:N1}' -f $script:activeSettings.CampaignBR
+        }
+        $brResult.Text = $brDisplay
+        $script:activeSettings.CurrentBRResult = $brDisplay
     }
     elseif ($action.Type -eq 'TrackSteps' -and [int]$action.Steps -gt 0 -and @($enabledStages).Count -gt 0) {
         $currentStageIndex = [math]::Min([int]$script:activeSettings.CampaignStageIndex, @($enabledStages).Count - 1)
+        $campaignComplete = $currentStageIndex -eq @($enabledStages).Count - 1
         $script:activeSettings.CampaignStageIndex = [math]::Min(@($enabledStages).Count - 1, $currentStageIndex + [int]$action.Steps)
     }
 
     Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
     $stageLabel = if (@($enabledStages).Count -gt 0) { [string]$enabledStages[[int]$script:activeSettings.CampaignStageIndex].Label } else { 'No enabled stage' }
     $statusMessage = switch ($action.Type) {
-        'TrackSteps' { "Success recorded - advanced to $stageLabel." }
-        'BRSteps' { "Success recorded - advanced to BR $('{0:N1}' -f $script:activeSettings.CampaignBR)." }
+        'TrackSteps' { if ($campaignComplete) { "Success recorded - final stage $stageLabel completed!" } else { "Success recorded - advanced to $stageLabel." } }
+        'BRSteps' { if ($campaignComplete) { "Success recorded - highest BR $brDisplay completed!" } else { "Success recorded - advanced to BR $brDisplay." } }
         default { 'Success recorded - ready for the next round.' }
     }
     return [pscustomobject]@{
         StageLabel = if ($action.Type -eq 'TrackSteps') { $stageLabel } else { '' }
-        BattleRating = if ($battleRatingWasRolled -or $action.Type -eq 'BRSteps') { '{0:N1}' -f $script:activeSettings.CampaignBR } else { '' }
+        BattleRating = if ($battleRatingWasRolled -or $action.Type -eq 'BRSteps') { if ($brDisplay) { $brDisplay } else { '{0:N1}' -f $script:activeSettings.CampaignBR } } else { '' }
         StatusMessage = $statusMessage
+        CampaignComplete = $campaignComplete
+        CampaignCompleteText = if ($action.Type -eq 'TrackSteps') { "Final stage completed: $stageLabel" } else { "Highest BR completed: $brDisplay" }
     }
 }
 
 function Invoke-CampaignFailure($challenge, $enabledStages, [bool] $battleRatingWasRolled) {
     $action = $challenge.FailureAction
+    $brDisplay = Get-CampaignBRDisplay
     $statusMessage = 'Failure recorded - stage unchanged.'
     $stageLabel = if (@($enabledStages).Count -gt 0) { [string]$enabledStages[[math]::Min([int]$script:activeSettings.CampaignStageIndex, @($enabledStages).Count - 1)].Label } else { 'No enabled stage' }
 
     if ($action.Type -eq 'BRStepsDown' -and [int]$action.Steps -gt 0) {
-        $availableBRStages = @($brStages | Where-Object { $_ -ge [double]$script:activeSettings.MinimumBR -and $_ -le [double]$script:activeSettings.MaximumBR })
-        $currentBRIndex = [array]::IndexOf($availableBRStages, [double]$script:activeSettings.CampaignBR)
-        if ($currentBRIndex -lt 0) {
-            $nearestBR = @($availableBRStages | Sort-Object { [math]::Abs($_ - [double]$script:activeSettings.CampaignBR) })[0]
-            $currentBRIndex = [array]::IndexOf($availableBRStages, $nearestBR)
+        if ([string]$script:activeSettings.BRRollMode -eq 'Bracket') {
+            $availableBrackets = @(Get-ValidBRBrackets)
+            $currentBRIndex = [array]::IndexOf(@($availableBrackets.Minimum), [double]$script:activeSettings.CampaignBR)
+            if ($currentBRIndex -lt 0) {
+                $nearestBracket = @($availableBrackets | Sort-Object { [math]::Abs($_.Minimum - [double]$script:activeSettings.CampaignBR) })[0]
+                $currentBRIndex = [array]::IndexOf(@($availableBrackets.Id), [string]$nearestBracket.Id)
+            }
+            $bracketSteps = [math]::Max(1, [math]::Ceiling([int]$action.Steps / 3.0))
+            $nextBRIndex = [math]::Max(0, $currentBRIndex - $bracketSteps)
+            $script:activeSettings.CampaignBR = [double]$availableBrackets[$nextBRIndex].Minimum
+            $brDisplay = [string]$availableBrackets[$nextBRIndex].Label
         }
-        $nextBRIndex = [math]::Max(0, $currentBRIndex - [int]$action.Steps)
-        $script:activeSettings.CampaignBR = [double]$availableBRStages[$nextBRIndex]
-        $brResult.Text = '{0:N1}' -f $script:activeSettings.CampaignBR
-        $statusMessage = if ($currentBRIndex -eq 0) { "Failure recorded - already at lowest BR $('{0:N1}' -f $script:activeSettings.CampaignBR)." } else { "Failure recorded - dropped to BR $('{0:N1}' -f $script:activeSettings.CampaignBR)." }
+        else {
+            $availableBRStages = @($brStages | Where-Object { $_ -ge [double]$script:activeSettings.MinimumBR -and $_ -le [double]$script:activeSettings.MaximumBR })
+            $currentBRIndex = [array]::IndexOf($availableBRStages, [double]$script:activeSettings.CampaignBR)
+            if ($currentBRIndex -lt 0) {
+                $nearestBR = @($availableBRStages | Sort-Object { [math]::Abs($_ - [double]$script:activeSettings.CampaignBR) })[0]
+                $currentBRIndex = [array]::IndexOf($availableBRStages, $nearestBR)
+            }
+            $nextBRIndex = [math]::Max(0, $currentBRIndex - [int]$action.Steps)
+            $script:activeSettings.CampaignBR = [double]$availableBRStages[$nextBRIndex]
+            $brDisplay = '{0:N1}' -f $script:activeSettings.CampaignBR
+        }
+        $brResult.Text = $brDisplay
+        $script:activeSettings.CurrentBRResult = $brDisplay
+        $statusMessage = if ($currentBRIndex -eq 0) { "Failure recorded - already at lowest BR $brDisplay." } else { "Failure recorded - dropped to BR $brDisplay." }
     }
     elseif ($action.Type -eq 'TrackStepsDown' -and [int]$action.Steps -gt 0 -and @($enabledStages).Count -gt 0) {
         $currentStageIndex = [math]::Min([int]$script:activeSettings.CampaignStageIndex, @($enabledStages).Count - 1)
@@ -479,7 +551,7 @@ function Invoke-CampaignFailure($challenge, $enabledStages, [bool] $battleRating
     Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
     return [pscustomobject]@{
         StageLabel = if ($action.Type -eq 'TrackStepsDown') { $stageLabel } else { '' }
-        BattleRating = if ($battleRatingWasRolled -or $action.Type -eq 'BRStepsDown') { '{0:N1}' -f $script:activeSettings.CampaignBR } else { '' }
+        BattleRating = if ($battleRatingWasRolled -or $action.Type -eq 'BRStepsDown') { if ($brDisplay) { $brDisplay } else { '{0:N1}' -f $script:activeSettings.CampaignBR } } else { '' }
         StatusMessage = $statusMessage
     }
 }
@@ -560,6 +632,7 @@ function New-BitmapImage([string] $path) {
 
 function Reset-BRQueue {
     Set-Content -LiteralPath $script:activePaths.BRQueue -Value ([string[]]@()) -Encoding UTF8
+    Set-Content -LiteralPath $script:activePaths.BRBracketQueue -Value ([string[]]@()) -Encoding UTF8
 }
 
 function New-BRQueue {
@@ -593,6 +666,39 @@ function Get-NextBR {
     return $selected
 }
 
+function Get-ValidBRBrackets {
+    $validStages = @($brStages | Where-Object {
+        $_ -ge [double]$script:activeSettings.MinimumBR -and
+        $_ -le [double]$script:activeSettings.MaximumBR
+    })
+    return @($validStages | Group-Object { [math]::Floor([double]$_) } | ForEach-Object {
+        $stages = @($_.Group | Sort-Object)
+        [pscustomobject]@{
+            Id = $stages[0].ToString('0.0', [Globalization.CultureInfo]::InvariantCulture) + ':' + $stages[-1].ToString('0.0', [Globalization.CultureInfo]::InvariantCulture)
+            Minimum = [double]$stages[0]
+            Maximum = [double]$stages[-1]
+            Label = ('{0:N1}-{1:N1}' -f [double]$stages[0], [double]$stages[-1])
+        }
+    })
+}
+
+function New-BRBracketQueue {
+    $validBrackets = @(Get-ValidBRBrackets)
+    $shuffledIds = @($validBrackets.Id | Get-Random -Count $validBrackets.Count)
+    Set-Content -LiteralPath $script:activePaths.BRBracketQueue -Value $shuffledIds -Encoding UTF8
+    return $shuffledIds
+}
+
+function Get-NextBRBracket {
+    $validBrackets = @(Get-ValidBRBrackets)
+    $validIds = @($validBrackets.Id)
+    $queue = @(Get-Content -LiteralPath $script:activePaths.BRBracketQueue | Where-Object { $_ -in $validIds })
+    if ($queue.Count -eq 0) { $queue = @(New-BRBracketQueue) }
+    $selectedId = [string]$queue[0]
+    Set-Content -LiteralPath $script:activePaths.BRBracketQueue -Value @($queue | Select-Object -Skip 1) -Encoding UTF8
+    return @($validBrackets | Where-Object Id -eq $selectedId)[0]
+}
+
 function Show-ChallengeEditor($owner, $existingChallenge) {
     [xml]$editorXaml = Get-Content -LiteralPath $challengeEditorXamlFile -Raw
     $editorReader = [System.Xml.XmlNodeReader]::new($editorXaml)
@@ -622,15 +728,34 @@ function Show-ChallengeEditor($owner, $existingChallenge) {
     $rewardType.ItemsSource = $rewardOptions
     $failureOptions = @(
         [pscustomobject]@{ Id='None:0'; Name='Stay at current stage'; Type='None'; Steps=0 }
-        [pscustomobject]@{ Id='BRStepsDown:1'; Name='Go down one BR stage'; Type='BRStepsDown'; Steps=1 }
+        [pscustomobject]@{ Id='BRStepsDown:1'; Name='Go down one exact BR stage / one whole bracket'; Type='BRStepsDown'; Steps=1 }
+        [pscustomobject]@{ Id='BRStepsDown:3'; Name='Go down by 1.0 / one whole bracket'; Type='BRStepsDown'; Steps=3 }
         [pscustomobject]@{ Id='TrackStepsDown:1'; Name='Go down one weapon stage'; Type='TrackStepsDown'; Steps=1 }
     )
-    $failureType.ItemsSource = $failureOptions
     $recordingMode.ItemsSource = @(
         [pscustomobject]@{ Id='Detailed'; Name='Detailed trackers' }
         [pscustomobject]@{ Id='Simple'; Name='Simple success / failed' }
     )
     $trackers = [Collections.ArrayList]::new()
+
+    $refreshFailureOptions = {
+        param([string] $preferredValue)
+        $rewardActionType = if ($rewardType.SelectedItem) { [string]$rewardType.SelectedItem.Type } else { 'None' }
+        $allowedIds = switch ($rewardActionType) {
+            'BRSteps' {
+                if ([int]$rewardType.SelectedItem.Steps -ge 3) { @('None:0','BRStepsDown:3') }
+                else { @('None:0','BRStepsDown:1') }
+            }
+            'TrackSteps' { @('None:0','TrackStepsDown:1') }
+            default { @('None:0') }
+        }
+        if ($rewardActionType -eq 'BRSteps' -and [int]$rewardType.SelectedItem.Steps -ge 3 -and $preferredValue -eq 'BRStepsDown:1') {
+            $preferredValue = 'BRStepsDown:3'
+        }
+        $failureType.ItemsSource = @($failureOptions | Where-Object { $_.Id -in $allowedIds })
+        $failureType.SelectedValue = $preferredValue
+        if (-not $failureType.SelectedValue) { $failureType.SelectedValue = 'None:0' }
+    }
 
     $refreshTrackers = {
         param([string] $selectedId)
@@ -650,23 +775,24 @@ function Show-ChallengeEditor($owner, $existingChallenge) {
         $rewardText.Text = $challenge.Reward
         foreach ($tracker in $challenge.Trackers) { [void]$trackers.Add($tracker) }
         $rewardType.SelectedValue = "$($challenge.RewardAction.Type):$($challenge.RewardAction.Steps)"
-        $failureType.SelectedValue = "$($challenge.FailureAction.Type):$($challenge.FailureAction.Steps)"
+        & $refreshFailureOptions "$($challenge.FailureAction.Type):$($challenge.FailureAction.Steps)"
         $recordingMode.SelectedValue = $challenge.RecordingMode
     }
     else {
         $rewardType.SelectedValue = 'None:0'
-        $failureType.SelectedValue = 'None:0'
+        & $refreshFailureOptions 'None:0'
         $recordingMode.SelectedValue = 'Detailed'
         $rewardText.Text = 'Complete the challenge.'
         [void]$trackers.Add([pscustomobject]@{ Id=[guid]::NewGuid().ToString('N'); Label='Objective completed'; Type='Checkbox'; Target=1; Required=$true })
     }
     if (-not $rewardType.SelectedValue) { $rewardType.SelectedIndex = 0 }
-    if (-not $failureType.SelectedValue) { $failureType.SelectedIndex = 0 }
+    if (-not $failureType.SelectedValue) { & $refreshFailureOptions 'None:0' }
     if (-not $recordingMode.SelectedValue) { $recordingMode.SelectedValue = 'Detailed' }
     & $refreshTrackers $null
 
     $rewardType.Add_SelectionChanged({
         $option = $rewardType.SelectedItem
+        & $refreshFailureOptions 'None:0'
         if ($option -and ([string]::IsNullOrWhiteSpace($rewardText.Text) -or $rewardOptions.DefaultText -contains $rewardText.Text)) {
             $rewardText.Text = $option.DefaultText
         }
@@ -766,10 +892,14 @@ function Show-SessionWindow($owner, $challenge, [string] $nation, [string] $batt
     $completionHint = $session.FindName('SessionCompletionHint')
     $timerText = $session.FindName('SessionTimer')
     $notes = $session.FindName('SessionNotes')
+    $campaignCompleteBanner = $session.FindName('SessionCampaignCompleteBanner')
+    $campaignCompleteText = $session.FindName('SessionCampaignCompleteText')
     $values = @{}
     $counterTexts = @{}
     $checkboxes = @{}
     $detailedRecording = [string]$challenge.RecordingMode -ne 'Simple'
+    $recordsBRProgression = $challenge.RewardAction.Type -eq 'BRSteps' -or $challenge.FailureAction.Type -eq 'BRStepsDown'
+    $recordsTrackProgression = $challenge.RewardAction.Type -eq 'TrackSteps' -or $challenge.FailureAction.Type -eq 'TrackStepsDown'
     $sessionState = [pscustomobject]@{
         SuccessCount = 0
         FailureCount = 0
@@ -858,6 +988,35 @@ function Show-SessionWindow($owner, $challenge, [string] $nation, [string] $batt
             }
         })
     }
+    $completeBanner = $campaignCompleteBanner
+    $completeText = $campaignCompleteText
+    $showCampaignComplete = {
+        param([string] $message)
+        if (-not $completeBanner -or -not $completeText) { return }
+        $completeText.Text = $message
+        $completeBanner.Visibility = [Windows.Visibility]::Visible
+        $completeBanner.Opacity = 0
+        $scale = [Windows.Media.ScaleTransform]$completeBanner.RenderTransform
+        if (-not $scale) { return }
+        $scale.ScaleX = 0.85; $scale.ScaleY = 0.85
+        $fadeSequence = [Windows.Media.Animation.DoubleAnimationUsingKeyFrames]::new()
+        foreach ($frame in @(
+            [pscustomobject]@{ Value=0.0; Milliseconds=0 }
+            [pscustomobject]@{ Value=1.0; Milliseconds=240 }
+            [pscustomobject]@{ Value=1.0; Milliseconds=2400 }
+            [pscustomobject]@{ Value=0.0; Milliseconds=2900 }
+        )) {
+            $keyFrame = [Windows.Media.Animation.LinearDoubleKeyFrame]::new()
+            $keyFrame.Value = [double]$frame.Value
+            $keyFrame.KeyTime = [Windows.Media.Animation.KeyTime]::FromTimeSpan([TimeSpan]::FromMilliseconds($frame.Milliseconds))
+            [void]$fadeSequence.KeyFrames.Add($keyFrame)
+        }
+        $growX = [Windows.Media.Animation.DoubleAnimation]::new(0.85, 1, [TimeSpan]::FromMilliseconds(300))
+        $growY = [Windows.Media.Animation.DoubleAnimation]::new(0.85, 1, [TimeSpan]::FromMilliseconds(300))
+        $completeBanner.BeginAnimation([Windows.UIElement]::OpacityProperty, $fadeSequence)
+        $scale.BeginAnimation([Windows.Media.ScaleTransform]::ScaleXProperty, $growX)
+        $scale.BeginAnimation([Windows.Media.ScaleTransform]::ScaleYProperty, $growY)
+    }.GetNewClosure()
 
     $finishSession = {
         param([string] $outcome)
@@ -878,8 +1037,8 @@ function Show-SessionWindow($owner, $challenge, [string] $nation, [string] $batt
     $successButton.Add_Click({
         $sessionState.SuccessCount = [int]$sessionState.SuccessCount + 1
         $attemptNote = $notes.Text.Trim()
-        $beforeBR = & $getVisibleBR
-        $beforeStage = & $getVisibleStage
+        $beforeBR = if ($recordsBRProgression) { & $getVisibleBR } else { $null }
+        $beforeStage = if ($recordsTrackProgression) { & $getVisibleStage } else { $null }
         $attemptTrackers = @(& $snapshotTrackers)
         if (-not [string]::IsNullOrWhiteSpace($attemptNote)) {
             [void]$sessionState.AttemptNotes.Add("Success $($sessionState.SuccessCount): $attemptNote")
@@ -897,11 +1056,15 @@ function Show-SessionWindow($owner, $challenge, [string] $nation, [string] $batt
                 $sessionBRText.Text = "Battle rating: $($newState.BattleRating)"
             }
             if ($newState.PSObject.Properties['StatusMessage']) { $successStatusMessage = [string]$newState.StatusMessage }
+            if ($newState.PSObject.Properties['CampaignComplete'] -and [bool]$newState.CampaignComplete) {
+                & $showCampaignComplete ([string]$newState.CampaignCompleteText)
+            }
         }
         [void]$sessionState.Attempts.Add([pscustomobject]@{
             Number=$sessionState.Attempts.Count + 1; Outcome='Success'; RecordedAt=(Get-Date).ToString('o')
             Notes=$attemptNote; TrackerValues=$attemptTrackers
-            StartingBR=$beforeBR; EndingBR=(& $getVisibleBR); StartingStage=$beforeStage; EndingStage=(& $getVisibleStage)
+            StartingBR=$beforeBR; EndingBR=$(if ($recordsBRProgression) { & $getVisibleBR } else { $null })
+            StartingStage=$beforeStage; EndingStage=$(if ($recordsTrackProgression) { & $getVisibleStage } else { $null })
             StatusMessage=$successStatusMessage
         })
         foreach ($tracker in @($challenge.Trackers)) {
@@ -919,8 +1082,8 @@ function Show-SessionWindow($owner, $challenge, [string] $nation, [string] $batt
     $failedButton.Add_Click({
         $sessionState.FailureCount = [int]$sessionState.FailureCount + 1
         $attemptNote = $notes.Text.Trim()
-        $beforeBR = & $getVisibleBR
-        $beforeStage = & $getVisibleStage
+        $beforeBR = if ($recordsBRProgression) { & $getVisibleBR } else { $null }
+        $beforeStage = if ($recordsTrackProgression) { & $getVisibleStage } else { $null }
         $attemptTrackers = @(& $snapshotTrackers)
         if (-not [string]::IsNullOrWhiteSpace($attemptNote)) {
             [void]$sessionState.AttemptNotes.Add("Failed $($sessionState.FailureCount): $attemptNote")
@@ -940,7 +1103,8 @@ function Show-SessionWindow($owner, $challenge, [string] $nation, [string] $batt
         [void]$sessionState.Attempts.Add([pscustomobject]@{
             Number=$sessionState.Attempts.Count + 1; Outcome='Failed'; RecordedAt=(Get-Date).ToString('o')
             Notes=$attemptNote; TrackerValues=$attemptTrackers
-            StartingBR=$beforeBR; EndingBR=(& $getVisibleBR); StartingStage=$beforeStage; EndingStage=(& $getVisibleStage)
+            StartingBR=$beforeBR; EndingBR=$(if ($recordsBRProgression) { & $getVisibleBR } else { $null })
+            StartingStage=$beforeStage; EndingStage=$(if ($recordsTrackProgression) { & $getVisibleStage } else { $null })
             StatusMessage=$failureStatusMessage
         })
         foreach ($tracker in @($challenge.Trackers)) {
@@ -1113,10 +1277,10 @@ $setActiveProfile = {
     $script:activeSettings.CampaignStageIndex = if ($enabledCampaignStages.Count -eq 0) { 0 } else { [math]::Min([int]$script:activeSettings.CampaignStageIndex, $enabledCampaignStages.Count - 1) }
     $script:activeSettings.CampaignBR = [math]::Max([double]$script:activeSettings.MinimumBR, [math]::Min([double]$script:activeSettings.CampaignBR, [double]$script:activeSettings.MaximumBR))
     Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
-    $brRangeText.Text = ('Range {0:N1}-{1:N1}' -f $script:activeSettings.MinimumBR, $script:activeSettings.MaximumBR)
+    $brRangeText.Text = ('Range {0:N1}-{1:N1} | {2}' -f $script:activeSettings.MinimumBR, $script:activeSettings.MaximumBR, $(if ($script:activeSettings.BRRollMode -eq 'Bracket') { 'BR brackets' } else { 'Specific BR' }))
     & $updateRollSessionAvailability
     $nationName.Text = 'Ready?'
-    $brResult.Text = [string][char]0x2014
+    $brResult.Text = if ([string]::IsNullOrWhiteSpace([string]$script:activeSettings.CurrentBRResult)) { [string][char]0x2014 } else { [string]$script:activeSettings.CurrentBRResult }
     $restoredChallenge = @($script:challenges | Where-Object { $_.Id -eq [string]$script:activeSettings.CurrentChallengeId } | Select-Object -First 1)
     if ($restoredChallenge.Count -gt 0) {
         $script:currentChallenge = $restoredChallenge[0]
@@ -1181,6 +1345,7 @@ $manageButton.Add_Click({
     $manageDeleteButton = $manageWindow.FindName('ManageDeleteProfileButton')
     $manageMinimumBR = $manageWindow.FindName('ManageMinimumBR')
     $manageMaximumBR = $manageWindow.FindName('ManageMaximumBR')
+    $manageBRRollMode = $manageWindow.FindName('ManageBRRollMode')
     $manageCampaignTrack = $manageWindow.FindName('ManageCampaignTrack')
     $manageCampaignStage = $manageWindow.FindName('ManageCampaignStage')
     $manageResetBRButton = $manageWindow.FindName('ManageResetBRButton')
@@ -1207,10 +1372,12 @@ $manageButton.Add_Click({
     $manageChallengeList = $manageWindow.FindName('ManageChallengeList')
     $manageFunModeList = $manageWindow.FindName('ManageFunModeList')
     $addChallengeButton = $manageWindow.FindName('AddChallengeButton')
+    $useSelectedChallengeButton = $manageWindow.FindName('UseSelectedChallengeButton')
     $editChallengeButton = $manageWindow.FindName('EditChallengeButton')
     $deleteChallengeButton = $manageWindow.FindName('DeleteChallengeButton')
     $restoreChallengesButton = $manageWindow.FindName('RestoreChallengesButton')
     $addFunModeButton = $manageWindow.FindName('AddFunModeButton')
+    $useSelectedFunModeButton = $manageWindow.FindName('UseSelectedFunModeButton')
     $editFunModeButton = $manageWindow.FindName('EditFunModeButton')
     $deleteFunModeButton = $manageWindow.FindName('DeleteFunModeButton')
     $restoreFunModesButton = $manageWindow.FindName('RestoreFunModesButton')
@@ -1220,6 +1387,10 @@ $manageButton.Add_Click({
 
     $manageMinimumBR.ItemsSource = $brStages
     $manageMaximumBR.ItemsSource = $brStages
+    $manageBRRollMode.ItemsSource = @(
+        [pscustomobject]@{ Id='Exact'; Name='Specific BR (for example 4.3)' }
+        [pscustomobject]@{ Id='Bracket'; Name='Whole BR bracket (for example 4.0-4.7)' }
+    )
     $manageCampaignTrack.ItemsSource = @($script:progressionCatalog.Tracks)
     $manageProgressionTrack.ItemsSource = @($script:progressionCatalog.Tracks)
     $progressionSourceText.Text = "War Thunder $($script:progressionCatalog.Source.GameVersion)"
@@ -1302,15 +1473,18 @@ $manageButton.Add_Click({
             $outcome = [string](& $readHistoryValue $_ 'Outcome' 'Legacy')
             $challenge = [string](& $readHistoryValue $_ 'ChallengeName' (& $readHistoryValue $_ 'Challenge' 'Unknown challenge'))
             $nation = [string](& $readHistoryValue $_ 'Nation' 'Unknown')
-            $startingBR = & $readHistoryValue $_ 'StartingBR' '?'
-            $endingBR = & $readHistoryValue $_ 'EndingBR' '?'
-            $startingStage = [string](& $readHistoryValue $_ 'StartingStage' '?')
-            $endingStage = [string](& $readHistoryValue $_ 'EndingStage' '?')
+            $startingBR = & $readHistoryValue $_ 'StartingBR' $null
+            $endingBR = & $readHistoryValue $_ 'EndingBR' $null
+            $startingStage = [string](& $readHistoryValue $_ 'StartingStage' '')
+            $endingStage = [string](& $readHistoryValue $_ 'EndingStage' '')
             $successes = [int](& $readHistoryValue $_ 'SuccessCount' 0)
             $failures = [int](& $readHistoryValue $_ 'FailureCount' 0)
             $sessionNotes = [string](& $readHistoryValue $_ 'Notes' '')
             $attempts = @(& $readHistoryValue $_ 'Attempts' @())
-            $progressSummary = if ($startingStage -ne '?' -or $endingStage -ne '?') { " | $startingStage -> $endingStage" } else { '' }
+            $progressSummary = if ($startingStage -or $endingStage) { " | $startingStage -> $endingStage" } else { '' }
+            $detailParts = @("Nation: $nation")
+            if ($null -ne $startingBR -or $null -ne $endingBR) { $detailParts += "BR: $startingBR -> $endingBR" }
+            if ($startingStage -or $endingStage) { $detailParts += "Stage: $startingStage -> $endingStage" }
             $attemptParts = @()
             if ($successes -gt 0) { $attemptParts += "$successes success$(if ($successes -ne 1) { 'es' })" }
             if ($failures -gt 0) { $attemptParts += "$failures failure$(if ($failures -ne 1) { 's' })" }
@@ -1341,7 +1515,7 @@ $manageButton.Add_Click({
             )
             [pscustomobject]@{
                 Summary = ('{0} | {1}{2} | {3}{4} | {5:mm\:ss}' -f $when, $outcome, $attemptSummary, $challenge, $progressSummary, $duration)
-                Detail = "Nation: $nation   BR: $startingBR -> $endingBR   Stage: $startingStage -> $endingStage"
+                Detail = $detailParts -join '   '
                 Attempts = [string]::Join([Environment]::NewLine, $attemptLines)
                 Notes = if ($attempts.Count -gt 0 -or [string]::IsNullOrWhiteSpace($sessionNotes)) { '' } else { "Notes: $sessionNotes" }
             }
@@ -1356,6 +1530,8 @@ $manageButton.Add_Click({
         $script:manageChanging = $true
         $manageMinimumBR.SelectedItem = [double]$script:activeSettings.MinimumBR
         $manageMaximumBR.SelectedItem = [double]$script:activeSettings.MaximumBR
+        $manageBRRollMode.SelectedValue = [string]$script:activeSettings.BRRollMode
+        if (-not $manageBRRollMode.SelectedValue) { $manageBRRollMode.SelectedValue = 'Exact' }
         $manageCampaignTrack.SelectedValue = [string]$script:activeSettings.CampaignTrackId
         if (-not $manageCampaignTrack.SelectedValue) { $manageCampaignTrack.SelectedValue = 'ground-gun' }
         & $refreshCampaignStages ([int]$script:activeSettings.CampaignStageIndex)
@@ -1382,14 +1558,20 @@ $manageButton.Add_Click({
         }
         $oldMinimumBR = [double]$script:activeSettings.MinimumBR
         $oldMaximumBR = [double]$script:activeSettings.MaximumBR
+        $oldBRRollMode = [string]$script:activeSettings.BRRollMode
         $script:activeSettings.MinimumBR = [double]$manageMinimumBR.SelectedItem
         $script:activeSettings.MaximumBR = [double]$manageMaximumBR.SelectedItem
-        if ($oldMinimumBR -ne [double]$script:activeSettings.MinimumBR -or $oldMaximumBR -ne [double]$script:activeSettings.MaximumBR) { Reset-BRQueue }
+        $script:activeSettings.BRRollMode = if ([string]$manageBRRollMode.SelectedValue -eq 'Bracket') { 'Bracket' } else { 'Exact' }
+        if ($oldMinimumBR -ne [double]$script:activeSettings.MinimumBR -or $oldMaximumBR -ne [double]$script:activeSettings.MaximumBR -or $oldBRRollMode -ne [string]$script:activeSettings.BRRollMode) {
+            Reset-BRQueue
+            $script:activeSettings.CurrentBRResult = ''
+            $brResult.Text = [string][char]0x2014
+        }
         $script:activeSettings.ClearSequenceOnExit = [bool]$manageClearOnExit.IsChecked
         if ($manageCampaignTrack.SelectedValue) { $script:activeSettings.CampaignTrackId = [string]$manageCampaignTrack.SelectedValue }
         if ($manageCampaignStage.SelectedIndex -ge 0) { $script:activeSettings.CampaignStageIndex = [int]$manageCampaignStage.SelectedIndex }
         Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
-        $brRangeText.Text = ('Range {0:N1}-{1:N1}' -f $script:activeSettings.MinimumBR, $script:activeSettings.MaximumBR)
+        $brRangeText.Text = ('Range {0:N1}-{1:N1} | {2}' -f $script:activeSettings.MinimumBR, $script:activeSettings.MaximumBR, $(if ($script:activeSettings.BRRollMode -eq 'Bracket') { 'BR brackets' } else { 'Specific BR' }))
     }
 
     & $refreshManageProfiles $script:activeProfileId
@@ -1460,6 +1642,7 @@ $manageButton.Add_Click({
     })
 
     $manageMinimumBR.Add_SelectionChanged({ & $saveManageSettings })
+    $manageBRRollMode.Add_SelectionChanged({ & $saveManageSettings })
     $manageMaximumBR.Add_SelectionChanged({
         if (-not $script:manageChanging -and [double]$manageMaximumBR.SelectedItem -lt [double]$manageMinimumBR.SelectedItem) {
             $script:manageChanging = $true
@@ -1475,7 +1658,12 @@ $manageButton.Add_Click({
     })
     $manageCampaignStage.Add_SelectionChanged({ & $saveManageSettings })
     $manageClearOnExit.Add_Click({ & $saveManageSettings })
-    $manageResetBRButton.Add_Click({ Reset-BRQueue; $brResult.Text = [string][char]0x2014 })
+    $manageResetBRButton.Add_Click({
+        Reset-BRQueue
+        $script:activeSettings.CurrentBRResult = ''
+        $brResult.Text = [string][char]0x2014
+        Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
+    })
 
     $saveSessionModules = {
         if ($script:manageChanging) { return }
@@ -1599,6 +1787,25 @@ $manageButton.Add_Click({
         & $refreshProgressionStages $null
     })
 
+    $useSelectedChallengeButton.Add_Click({
+        $card = $manageChallengeList.SelectedItem
+        if (-not $card) { return }
+        $script:currentChallenge = $card
+        $script:activeSettings.CurrentChallengeId = [string]$card.Id
+        $challengeName.Text = [string]$card.Name
+        $challengeObjective.Text = [string]$card.Objective
+        $challengeReward.Text = "SUCCESS: $($card.Reward)"
+        $startSessionButton.IsEnabled = $true
+        Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
+    })
+
+    $useSelectedFunModeButton.Add_Click({
+        $card = $manageFunModeList.SelectedItem
+        if (-not $card) { return }
+        $funModeName.Text = [string]$card.Name
+        $funModeRule.Text = [string]$card.Rule
+    })
+
     $addChallengeButton.Add_Click({
         $card = Show-ChallengeEditor $manageWindow $null
         if (-not $card) { return }
@@ -1710,9 +1917,18 @@ $resetButton.Add_Click({
 })
 
 $rollBattleRating = {
-    $selectedRating = Get-NextBR
-    $script:activeSettings.CampaignBR = $selectedRating
-    $brResult.Text = ('{0:N1}' -f $selectedRating)
+    if ([string]$script:activeSettings.BRRollMode -eq 'Bracket') {
+        $selectedBracket = Get-NextBRBracket
+        $script:activeSettings.CampaignBR = [double]$selectedBracket.Minimum
+        $brResult.Text = [string]$selectedBracket.Label
+    }
+    else {
+        $selectedRating = Get-NextBR
+        $script:activeSettings.CampaignBR = $selectedRating
+        $brResult.Text = ('{0:N1}' -f $selectedRating)
+    }
+    $script:activeSettings.CurrentBRResult = [string]$brResult.Text
+    Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR)
 }
 
 $rollChallenge = {
@@ -1753,6 +1969,7 @@ $resetAllButton.Add_Click({
     Clear-Content -LiteralPath $script:activePaths.FunModeQueue
     $nationName.Text = 'Ready?'
     $nationImage.Source = New-BitmapImage $emptyImagePath
+    $script:activeSettings.CurrentBRResult = ''
     $brResult.Text = [string][char]0x2014
     & $clearCurrentChallenge
     & $clearCurrentFunMode
@@ -1770,22 +1987,25 @@ $startSessionButton.Add_Click({
     $nation = if ($nationName.Text -eq 'Ready?') { 'Not rolled' } else { $nationName.Text }
     $battleRatingWasRolled = $brResult.Text -ne [string][char]0x2014
     $challengeUsesBR = $script:currentChallenge.RewardAction.Type -eq 'BRSteps' -or $script:currentChallenge.FailureAction.Type -eq 'BRStepsDown'
+    $challengeUsesTrack = $script:currentChallenge.RewardAction.Type -eq 'TrackSteps' -or $script:currentChallenge.FailureAction.Type -eq 'TrackStepsDown'
     $battleRating = if ($battleRatingWasRolled) { $brResult.Text } elseif (-not $challengeUsesBR) { '' } else { '{0:N1}' -f $script:activeSettings.CampaignBR }
     $funMode = if ($funModeName.Text -eq 'No fun mode drawn') { 'None' } else { $funModeName.Text }
     $startingBR = [double]$script:activeSettings.CampaignBR
     $startingStage = if ($stage) { $stage.Label } else { $null }
     $sessionChallenge = $script:currentChallenge
-    $advanceCampaign = { Invoke-CampaignSuccess $sessionChallenge $enabledStages $battleRatingWasRolled }.GetNewClosure()
-    $punishCampaign = { Invoke-CampaignFailure $sessionChallenge $enabledStages $battleRatingWasRolled }.GetNewClosure()
+    $successCommand = Get-Command Invoke-CampaignSuccess -CommandType Function
+    $failureCommand = Get-Command Invoke-CampaignFailure -CommandType Function
+    $advanceCampaign = { & $successCommand $sessionChallenge $enabledStages $battleRatingWasRolled }.GetNewClosure()
+    $punishCampaign = { & $failureCommand $sessionChallenge $enabledStages $battleRatingWasRolled }.GetNewClosure()
 
     $result = Show-SessionWindow $window $script:currentChallenge $nation $battleRating $funMode $track $stage $advanceCampaign $punishCampaign
 
     $endingStage = if ($enabledStages.Count -gt 0) { $enabledStages[[math]::Min([int]$script:activeSettings.CampaignStageIndex, $enabledStages.Count - 1)].Label } else { $null }
     Add-SessionHistoryRecord ([pscustomobject]@{
         Id=[guid]::NewGuid().ToString('N'); ChallengeId=$script:currentChallenge.Id; ChallengeName=$script:currentChallenge.Name
-        Nation=$nation; StartingBR=$(if ($battleRatingWasRolled -or $challengeUsesBR) { $startingBR } else { $null }); FunMode=$funMode; TrackId=$track.Id
-        StartingStage=$startingStage; EndingStage=$endingStage
-        EndingBR=$(if ($battleRatingWasRolled -or $challengeUsesBR) { [double]$script:activeSettings.CampaignBR } else { $null })
+        Nation=$nation; StartingBR=$(if ($challengeUsesBR) { if (-not [string]::IsNullOrWhiteSpace($battleRating)) { $battleRating } else { Get-CampaignBRDisplay } } else { $null }); FunMode=$funMode; TrackId=$(if ($challengeUsesTrack) { $track.Id } else { $null })
+        StartingStage=$(if ($challengeUsesTrack) { $startingStage } else { $null }); EndingStage=$(if ($challengeUsesTrack) { $endingStage } else { $null })
+        EndingBR=$(if ($challengeUsesBR) { Get-CampaignBRDisplay } else { $null })
         Outcome=$result.Outcome; StartedAt=$result.StartedAt; EndedAt=$result.EndedAt
         DurationSeconds=$result.DurationSeconds; SuccessCount=$result.SuccessCount; FailureCount=$result.FailureCount
         Notes=$result.Notes; TrackerValues=$result.TrackerValues; Attempts=$result.Attempts
@@ -1800,8 +2020,9 @@ $window.Add_Closed({
 })
 
 if ($ValidateOnly) {
-    if ($brResult.Text -ne [string][char]0x2014) {
-        throw 'The BR placeholder did not initialize correctly.'
+    $expectedBRResult = if ([string]::IsNullOrWhiteSpace([string]$script:activeSettings.CurrentBRResult)) { [string][char]0x2014 } else { [string]$script:activeSettings.CurrentBRResult }
+    if ($brResult.Text -ne $expectedBRResult) {
+        throw 'The saved BR result did not initialize correctly.'
     }
     if (@($challenges.Id | Select-Object -Unique).Count -ne $challenges.Count) {
         throw 'Challenge IDs must be unique.'
@@ -1824,23 +2045,47 @@ if ($ValidateOnly) {
         if (@($track.Stages.Id | Select-Object -Unique).Count -ne @($track.Stages).Count) { throw "Progression stage IDs in '$($track.Name)' must be unique." }
     }
     $validationBRQueue = Join-Path ([IO.Path]::GetTempPath()) ("thunder-roulette-br-{0}.txt" -f [guid]::NewGuid().ToString('N'))
+    $validationBRBracketQueue = Join-Path ([IO.Path]::GetTempPath()) ("thunder-roulette-br-bracket-{0}.txt" -f [guid]::NewGuid().ToString('N'))
     $originalBRQueue = $script:activePaths.BRQueue
+    $originalBRBracketQueue = $script:activePaths.BRBracketQueue
     $originalMinimumBR = [double]$script:activeSettings.MinimumBR
     $originalMaximumBR = [double]$script:activeSettings.MaximumBR
     try {
         $script:activePaths.BRQueue = $validationBRQueue
+        $script:activePaths.BRBracketQueue = $validationBRBracketQueue
         $script:activeSettings.MinimumBR = 1.0
         $script:activeSettings.MaximumBR = 2.0
         Reset-BRQueue
         $validationBRRolls = @(1..4 | ForEach-Object { Get-NextBR })
         if (@($validationBRRolls | Select-Object -Unique).Count -ne 4) { throw 'BR sequence repeated a stage before exhausting its valid range.' }
-        if (@($validationBRRolls | Sort-Object) -join ',' -ne '1,1.3,1.7,2') { throw 'BR sequence did not contain every valid stage in its range.' }
+        $expectedBRRolls = @(1.0, 1.3, 1.7, 2.0)
+        $sortedBRRolls = @($validationBRRolls | Sort-Object)
+        for ($index = 0; $index -lt $expectedBRRolls.Count; $index++) {
+            if ([math]::Abs([double]$sortedBRRolls[$index] - [double]$expectedBRRolls[$index]) -gt 0.000001) {
+                throw 'BR sequence did not contain every valid stage in its range.'
+            }
+        }
+        $script:activeSettings.MinimumBR = 1.3
+        $script:activeSettings.MaximumBR = 3.3
+        Reset-BRQueue
+        $validationBrackets = @(1..3 | ForEach-Object { Get-NextBRBracket })
+        if (@($validationBrackets.Id | Select-Object -Unique).Count -ne 3) { throw 'BR bracket sequence repeated before exhausting its valid range.' }
+        $sortedBrackets = @($validationBrackets | Sort-Object Minimum)
+        $expectedBracketBounds = @(@(1.3,1.7), @(2.0,2.7), @(3.0,3.3))
+        for ($index = 0; $index -lt $expectedBracketBounds.Count; $index++) {
+            if ([math]::Abs([double]$sortedBrackets[$index].Minimum - [double]$expectedBracketBounds[$index][0]) -gt 0.000001 -or
+                [math]::Abs([double]$sortedBrackets[$index].Maximum - [double]$expectedBracketBounds[$index][1]) -gt 0.000001) {
+                throw 'BR brackets did not respect the configured profile limits.'
+            }
+        }
     }
     finally {
         $script:activePaths.BRQueue = $originalBRQueue
+        $script:activePaths.BRBracketQueue = $originalBRBracketQueue
         $script:activeSettings.MinimumBR = $originalMinimumBR
         $script:activeSettings.MaximumBR = $originalMaximumBR
         if (Test-Path -LiteralPath $validationBRQueue) { Remove-Item -LiteralPath $validationBRQueue -Force }
+        if (Test-Path -LiteralPath $validationBRBracketQueue) { Remove-Item -LiteralPath $validationBRBracketQueue -Force }
     }
     if (-not $rollChallengeButton -or -not $challengeName -or -not $challengeObjective) {
         throw 'Challenge controls did not initialize correctly.'
@@ -1855,14 +2100,14 @@ if ($ValidateOnly) {
     $validationManageReader = [System.Xml.XmlNodeReader]::new($validationManageXaml)
     $validationManageWindow = [Windows.Markup.XamlReader]::Load($validationManageReader)
     foreach ($controlName in @(
-        'ManageProfileList', 'ManageMinimumBR', 'ManageMaximumBR', 'ManageResetBRButton',
+        'ManageProfileList', 'ManageMinimumBR', 'ManageMaximumBR', 'ManageBRRollMode', 'ManageResetBRButton',
         'ManageCampaignTrack', 'ManageCampaignStage',
         'SessionRollNation', 'SessionRollBR', 'SessionRollChallenge', 'SessionRollFunMode',
         'ManageProgressionTrack', 'ManageProgressionStageList', 'AddExactStageButton', 'AddRangeStageButton',
         'EditStageButton', 'ToggleStageButton', 'MoveStageUpButton', 'MoveStageDownButton', 'DeleteStageButton', 'RestoreProgressionButton',
         'ManageHistoryList', 'ManageHistorySummary', 'ClearHistoryButton',
-        'ManageChallengeList', 'AddChallengeButton', 'EditChallengeButton', 'DeleteChallengeButton', 'ResetChallengeDeckButton', 'RestoreChallengesButton',
-        'ManageFunModeList', 'AddFunModeButton', 'EditFunModeButton', 'DeleteFunModeButton', 'ResetFunModeDeckButton', 'RestoreFunModesButton',
+        'ManageChallengeList', 'UseSelectedChallengeButton', 'AddChallengeButton', 'EditChallengeButton', 'DeleteChallengeButton', 'ResetChallengeDeckButton', 'RestoreChallengesButton',
+        'ManageFunModeList', 'UseSelectedFunModeButton', 'AddFunModeButton', 'EditFunModeButton', 'DeleteFunModeButton', 'ResetFunModeDeckButton', 'RestoreFunModesButton',
         'ManageCloseButton'
     )) {
         if (-not $validationManageWindow.FindName($controlName)) {
@@ -1885,6 +2130,7 @@ if ($ValidateOnly) {
             Controls = @(
                 'SessionChallengeName', 'SessionObjective', 'SessionTimer', 'SessionNation', 'SessionBR',
                 'SessionFunMode', 'SessionTrack', 'SessionStage', 'SessionReward', 'SessionTrackerScroll', 'SessionTrackerPanel',
+                'SessionCampaignCompleteBanner', 'SessionCampaignCompleteText',
                 'SessionNotes', 'SessionCompletionHint', 'SessionSuccessButton', 'SessionFailedButton', 'SessionAbandonButton'
             )
         }

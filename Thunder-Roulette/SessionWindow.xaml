@@ -58,5 +58,20 @@
                         Background="#16A34A" Foreground="White" IsEnabled="False" />
             </StackPanel>
         </Grid>
+
+        <Border Name="SessionCampaignCompleteBanner" Grid.RowSpan="5" Panel.ZIndex="20"
+                HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,8,0,0"
+                Background="#FFCF55" CornerRadius="14" Padding="24,12"
+                Opacity="0" Visibility="Collapsed" IsHitTestVisible="False">
+            <Border.RenderTransform>
+                <ScaleTransform ScaleX="0.85" ScaleY="0.85" CenterX="110" CenterY="25" />
+            </Border.RenderTransform>
+            <StackPanel>
+                <TextBlock Text="CAMPAIGN COMPLETE" Foreground="#17202A" FontSize="20"
+                           FontWeight="Bold" HorizontalAlignment="Center" />
+                <TextBlock Name="SessionCampaignCompleteText" Foreground="#334155"
+                           HorizontalAlignment="Center" Margin="0,2,0,0" />
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>

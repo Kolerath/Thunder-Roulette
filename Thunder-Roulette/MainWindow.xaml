@@ -64,14 +64,14 @@
 
                 <Grid Grid.Row="1" Margin="0,22,0,20">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="132" />
+                        <ColumnDefinition Width="160" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
                     <Border Background="#AA0F172A"
-                            Width="116"
-                            Height="116"
-                            CornerRadius="58"
+                            Width="144"
+                            Height="144"
+                            CornerRadius="72"
                             Padding="5"
                             Margin="0,0,16,0"
                             HorizontalAlignment="Center"
