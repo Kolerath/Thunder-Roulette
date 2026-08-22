@@ -8,9 +8,15 @@ Thunder Roulette. App-ready transparent copies live under `Assets/NationIcons`.
 The abstract navy-and-gold application background is also an original AI-assisted
 asset created specifically for this project.
 
-Each sequence contains every nation exactly once in a shuffled order. Every
-player profile has its own queue and **Clear sequence on exit** preference, and
-the app remembers the last selected profile.
+The main **Any / Ground / Air / Naval** selector is a shared session context that
+filters nation, challenge, fun-mode, and weapon-progression choices while squad
+profiles are switched. Each profile keeps an independent no-repeat deck for every
+domain. Existing installations begin in **Any**. Naval mode initially excludes China, Sweden,
+and Israel because they do not have naval trees in the supported game snapshot.
+
+Each sequence contains every eligible nation exactly once in a shuffled order.
+Every player profile has its own queues and **Clear sequence on exit** preference,
+and the app remembers the last selected profile.
 
 Each profile also stores a minimum and maximum battle rating. **Roll BR** chooses
 a valid War Thunder BR stage (`.0`, `.3`, or `.7`) inside that range. BR stages
@@ -49,8 +55,13 @@ to that person's saved sequence. The final remaining profile cannot be deleted.
 Deleted profile data is retained under `Data/DeletedProfiles` in case it needs to
 be recovered manually.
 
+The **Domains** tab controls nation eligibility for Ground, Air, and Naval rolls.
+Its defaults can be restored at any time, and it prevents a domain from being
+saved with no eligible nations.
+
 Manage also provides persistent editors for the Challenge and Fun Mode libraries.
-Cards can be added, edited, or deleted; either library can be restored to its
+Cards can be tagged for Any, Ground, Air, or Naval, then added, edited, or
+deleted; either library can be restored to its
 shipped defaults. Resetting a deck only clears the selected profile's draw order
 and does not alter the card library. **Use selected** places a highlighted
 Challenge or Fun Mode directly on the main window without drawing from its deck.

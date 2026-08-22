@@ -20,6 +20,7 @@ $profilesDirectory = Join-Path $dataDirectory 'Profiles'
 $deletedProfilesDirectory = Join-Path $dataDirectory 'DeletedProfiles'
 $profilesFile = Join-Path $dataDirectory 'profiles.json'
 $contentFile = Join-Path $dataDirectory 'content-libraries.json'
+$domainSettingsFile = Join-Path $dataDirectory 'domain-settings.json'
 $progressionFile = Join-Path $dataDirectory 'progression-catalog.json'
 $defaultProgressionFile = Join-Path $appRoot 'DefaultProgressionCatalog.json'
 $xamlFile = Join-Path $appRoot 'MainWindow.xaml'
@@ -38,6 +39,62 @@ $nations = [ordered]@{
     France          = 'France.png'
     Sweden          = 'Sweden.png'
     Israel          = 'Israel.png'
+}
+
+$domains = @(
+    [pscustomobject]@{ Id='Any'; Name='Any mode' }
+    [pscustomobject]@{ Id='Ground'; Name='Ground' }
+    [pscustomobject]@{ Id='Air'; Name='Air' }
+    [pscustomobject]@{ Id='Naval'; Name='Naval' }
+)
+$defaultDomainNationEligibility = [ordered]@{
+    Ground = @($nations.Keys)
+    Air = @($nations.Keys)
+    Naval = @('USA','Germany','USSR','Great Britain','Japan','Italy','France')
+}
+
+function Normalize-Domain([string] $domain) {
+    if ($domain -in @('Ground','Air','Naval')) { return $domain }
+    return 'Any'
+}
+
+function Save-DomainSettings {
+    [pscustomobject]@{ NationEligibility = $script:domainNationEligibility } |
+        ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $domainSettingsFile -Encoding UTF8
+}
+
+function Load-DomainSettings {
+    $loaded = $null
+    try { $loaded = (Get-Content -LiteralPath $domainSettingsFile -Raw | ConvertFrom-Json).NationEligibility } catch {}
+    $normalized = [ordered]@{}
+    foreach ($domain in @('Ground','Air','Naval')) {
+        $values = if ($loaded -and $loaded.PSObject.Properties[$domain]) { @($loaded.$domain) } else { @($defaultDomainNationEligibility[$domain]) }
+        $values = @($nations.Keys | Where-Object { $_ -in $values })
+        if ($values.Count -eq 0) { $values = @($defaultDomainNationEligibility[$domain]) }
+        $normalized[$domain] = $values
+    }
+    $script:domainNationEligibility = $normalized
+    Save-DomainSettings
+}
+
+function Get-EligibleNations([string] $domain) {
+    $domain = Normalize-Domain $domain
+    if ($domain -eq 'Any') { return @($nations.Keys) }
+    return @($script:domainNationEligibility[$domain])
+}
+
+function Test-ContentDomain($item, [string] $domain) {
+    $selected = Normalize-Domain $domain
+    $itemDomain = if ($item.PSObject.Properties['Domain']) { Normalize-Domain ([string]$item.Domain) } else { 'Any' }
+    return $selected -eq 'Any' -or $itemDomain -eq 'Any' -or $itemDomain -eq $selected
+}
+
+function Get-EligibleChallenges { return @($script:challenges | Where-Object { Test-ContentDomain $_ $script:activeSettings.Domain }) }
+function Get-EligibleFunModes { return @($script:funModes | Where-Object { Test-ContentDomain $_ $script:activeSettings.Domain }) }
+function Get-EligibleProgressionTracks([string] $domain) {
+    $domain = Normalize-Domain $domain
+    if ($domain -eq 'Any') { return @($script:progressionCatalog.Tracks) }
+    return @($script:progressionCatalog.Tracks | Where-Object Domain -eq $domain)
 }
 
 # War Thunder uses thirds rounded to one decimal: .0, .3, .7.
@@ -77,7 +134,7 @@ $funModes = @(
 )
 
 $defaultChallenges = @(($challenges | ConvertTo-Json -Depth 8 | ConvertFrom-Json))
-$defaultFunModes = @($funModes | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Name = $_.Name; Rule = $_.Rule } })
+$defaultFunModes = @($funModes | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Name = $_.Name; Rule = $_.Rule; Domain = $(if ($_.Id -in @('light-tanks','derp-guns','open-tops','wheels-only','tank-destroyers','aggressive-spaa','no-aircraft')) { 'Ground' } else { 'Any' }) } })
 
 function ConvertTo-Challenge($challenge) {
     $default = @($defaultChallenges | Where-Object { $_.Id -eq [string]$challenge.Id } | Select-Object -First 1)
@@ -142,6 +199,7 @@ function ConvertTo-Challenge($challenge) {
     else { 0 }
     return [pscustomobject]@{
         Id = [string]$challenge.Id; Name = [string]$challenge.Name
+        Domain = if ($challenge.PSObject.Properties['Domain']) { Normalize-Domain ([string]$challenge.Domain) } elseif ([string]$challenge.Id -in @('combined-arms','wing-clipper','light-brigade','heavy-metal')) { 'Ground' } else { 'Any' }
         RecordingMode = if ($challenge.PSObject.Properties['RecordingMode'] -and [string]$challenge.RecordingMode -eq 'Simple') { 'Simple' } else { 'Detailed' }
         Objective = if ($legacyCaliberReward -or $legacyCaliberTracker) { [string]$default[0].Objective } else { [string]$challenge.Objective }
         Reward = if ($legacyCaliberReward -or $legacyCaliberTracker) { [string]$default[0].Reward } else { [string]$challenge.Reward }
@@ -157,6 +215,15 @@ function ConvertTo-Challenge($challenge) {
     }
 }
 
+function ConvertTo-FunMode($funMode) {
+    return [pscustomobject]@{
+        Id = [string]$funMode.Id
+        Name = [string]$funMode.Name
+        Rule = [string]$funMode.Rule
+        Domain = if ($funMode.PSObject.Properties['Domain']) { Normalize-Domain ([string]$funMode.Domain) } elseif ([string]$funMode.Id -in @('light-tanks','derp-guns','open-tops','wheels-only','tank-destroyers','aggressive-spaa','no-aircraft')) { 'Ground' } else { 'Any' }
+    }
+}
+
 function Save-ContentLibraries {
     [pscustomobject]@{ Challenges = @($script:challenges); FunModes = @($script:funModes) } |
         ConvertTo-Json -Depth 5 |
@@ -167,7 +234,7 @@ function Load-ContentLibraries {
     try {
         $library = Get-Content -LiteralPath $contentFile -Raw | ConvertFrom-Json
         $loadedChallenges = @($library.Challenges | ForEach-Object { ConvertTo-Challenge $_ })
-        $loadedFunModes = @($library.FunModes)
+        $loadedFunModes = @($library.FunModes | ForEach-Object { ConvertTo-FunMode $_ })
         if ($loadedChallenges.Count -eq 0 -or $loadedFunModes.Count -eq 0) { throw 'Content libraries cannot be empty.' }
         $script:challenges = $loadedChallenges
         $script:funModes = $loadedFunModes
@@ -175,7 +242,7 @@ function Load-ContentLibraries {
     }
     catch {
         $script:challenges = @($defaultChallenges | ForEach-Object { ConvertTo-Challenge $_ })
-        $script:funModes = @($defaultFunModes)
+        $script:funModes = @($defaultFunModes | ForEach-Object { ConvertTo-FunMode $_ })
         Save-ContentLibraries
     }
 }
@@ -369,7 +436,7 @@ function Get-ProfilePaths([string] $profileId) {
     }
     if (-not (Test-Path -LiteralPath $settings -PathType Leaf)) {
         @{
-            ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0; BRRollMode = 'Exact'
+            ClearSequenceOnExit = $false; Domain = 'Any'; MinimumBR = 1.0; MaximumBR = 14.0; BRRollMode = 'Exact'
             SessionRollNation = $true; SessionRollBR = $true
             SessionRollChallenge = $true; SessionRollFunMode = $true
             CampaignTrackId = 'ground-gun'; CampaignStageIndex = 0; CampaignBR = 1.0; CurrentBRResult = ''; CurrentChallengeId = ''
@@ -378,7 +445,22 @@ function Get-ProfilePaths([string] $profileId) {
             Set-Content -LiteralPath $settings -Encoding UTF8
     }
 
-    return [pscustomobject]@{ Queue = $queue; BRQueue = $brQueue; BRBracketQueue = $brBracketQueue; ChallengeQueue = $challengeQueue; FunModeQueue = $funModeQueue; Settings = $settings; SessionHistory = $sessionHistory }
+    return [pscustomobject]@{ Directory = $directory; Queue = $queue; BRQueue = $brQueue; BRBracketQueue = $brBracketQueue; ChallengeQueue = $challengeQueue; FunModeQueue = $funModeQueue; Settings = $settings; SessionHistory = $sessionHistory }
+}
+
+function Get-DomainQueuePath([string] $kind) {
+    $domain = Normalize-Domain $script:activeSettings.Domain
+    if ($domain -eq 'Any') {
+        switch ($kind) {
+            'Nation' { return $script:activePaths.Queue }
+            'Challenge' { return $script:activePaths.ChallengeQueue }
+            'FunMode' { return $script:activePaths.FunModeQueue }
+        }
+    }
+    $prefix = switch ($kind) { 'Nation' { 'queue' } 'Challenge' { 'challenge-queue' } 'FunMode' { 'fun-mode-queue' } }
+    $path = Join-Path $script:activePaths.Directory ("$prefix-$($domain.ToLowerInvariant()).txt")
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { New-Item -ItemType File -Path $path | Out-Null }
+    return $path
 }
 
 function Get-ProfileSettings {
@@ -389,6 +471,7 @@ function Get-ProfileSettings {
         $maximumBR = if ($saved.PSObject.Properties['MaximumBR']) { [double]$saved.MaximumBR } else { 14.0 }
         return [pscustomobject]@{
             ClearSequenceOnExit = $clearOnExit
+            Domain = if ($saved.PSObject.Properties['Domain']) { Normalize-Domain ([string]$saved.Domain) } else { 'Any' }
             MinimumBR = $minimumBR
             MaximumBR = $maximumBR
             BRRollMode = if ($saved.PSObject.Properties['BRRollMode'] -and [string]$saved.BRRollMode -eq 'Bracket') { 'Bracket' } else { 'Exact' }
@@ -405,7 +488,7 @@ function Get-ProfileSettings {
     }
     catch {
         return [pscustomobject]@{
-            ClearSequenceOnExit = $false; MinimumBR = 1.0; MaximumBR = 14.0; BRRollMode = 'Exact'
+            ClearSequenceOnExit = $false; Domain = 'Any'; MinimumBR = 1.0; MaximumBR = 14.0; BRRollMode = 'Exact'
             SessionRollNation = $true; SessionRollBR = $true
             SessionRollChallenge = $true; SessionRollFunMode = $true
             CampaignTrackId = 'ground-gun'; CampaignStageIndex = 0; CampaignBR = 1.0; CurrentBRResult = ''; CurrentChallengeId = ''
@@ -424,8 +507,10 @@ function Save-ProfileSettings([bool] $clearSequenceOnExit, [double] $minimumBR, 
     $currentBRResult = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['CurrentBRResult']) { [string]$script:activeSettings.CurrentBRResult } else { '' }
     $currentChallengeId = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['CurrentChallengeId']) { [string]$script:activeSettings.CurrentChallengeId } else { '' }
     $brRollMode = if ($script:activeSettings -and [string]$script:activeSettings.BRRollMode -eq 'Bracket') { 'Bracket' } else { 'Exact' }
+    $domain = if ($script:activeSettings -and $script:activeSettings.PSObject.Properties['Domain']) { Normalize-Domain ([string]$script:activeSettings.Domain) } else { 'Any' }
     @{
         ClearSequenceOnExit = $clearSequenceOnExit
+        Domain = $domain
         MinimumBR = $minimumBR
         MaximumBR = $maximumBR
         BRRollMode = $brRollMode
@@ -557,66 +642,69 @@ function Invoke-CampaignFailure($challenge, $enabledStages, [bool] $battleRating
 }
 
 function Reset-NationQueue {
-    Set-Content -LiteralPath $script:activePaths.Queue -Value ([string[]]@()) -Encoding UTF8
+    Set-Content -LiteralPath (Get-DomainQueuePath 'Nation') -Value ([string[]]@()) -Encoding UTF8
 }
 
 function New-NationQueue {
-    $shuffledNations = @($nations.Keys | Get-Random -Count $nations.Count)
-    Set-Content -LiteralPath $script:activePaths.Queue -Value $shuffledNations -Encoding UTF8
+    $eligible = @(Get-EligibleNations $script:activeSettings.Domain)
+    $shuffledNations = @($eligible | Get-Random -Count $eligible.Count)
+    Set-Content -LiteralPath (Get-DomainQueuePath 'Nation') -Value $shuffledNations -Encoding UTF8
     return $shuffledNations
 }
 
 function Get-NextNation {
     $queue = @(
-        Get-Content -LiteralPath $script:activePaths.Queue |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        Get-Content -LiteralPath (Get-DomainQueuePath 'Nation') |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -in @(Get-EligibleNations $script:activeSettings.Domain) }
     )
     if ($queue.Count -eq 0) {
         $queue = @(New-NationQueue)
     }
 
     $selectedNation = $queue[0]
-    Set-Content -LiteralPath $script:activePaths.Queue -Value @($queue | Select-Object -Skip 1) -Encoding UTF8
+    Set-Content -LiteralPath (Get-DomainQueuePath 'Nation') -Value @($queue | Select-Object -Skip 1) -Encoding UTF8
     return $selectedNation
 }
 
 function New-ChallengeQueue {
-    $shuffledIds = @($challenges.Id | Get-Random -Count $challenges.Count)
-    Set-Content -LiteralPath $script:activePaths.ChallengeQueue -Value $shuffledIds -Encoding UTF8
+    $eligible = @(Get-EligibleChallenges)
+    $shuffledIds = @($eligible.Id | Get-Random -Count $eligible.Count)
+    Set-Content -LiteralPath (Get-DomainQueuePath 'Challenge') -Value $shuffledIds -Encoding UTF8
     return $shuffledIds
 }
 
 function Get-NextChallenge {
     $queue = @(
-        Get-Content -LiteralPath $script:activePaths.ChallengeQueue |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -in $challenges.Id }
+        Get-Content -LiteralPath (Get-DomainQueuePath 'Challenge') |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -in @(Get-EligibleChallenges).Id }
     )
     if ($queue.Count -eq 0) {
         $queue = @(New-ChallengeQueue)
     }
 
     $selectedId = $queue[0]
-    Set-Content -LiteralPath $script:activePaths.ChallengeQueue -Value @($queue | Select-Object -Skip 1) -Encoding UTF8
+    Set-Content -LiteralPath (Get-DomainQueuePath 'Challenge') -Value @($queue | Select-Object -Skip 1) -Encoding UTF8
     return @($challenges | Where-Object Id -eq $selectedId)[0]
 }
 
 function New-FunModeQueue {
-    $shuffledIds = @($funModes.Id | Get-Random -Count $funModes.Count)
-    Set-Content -LiteralPath $script:activePaths.FunModeQueue -Value $shuffledIds -Encoding UTF8
+    $eligible = @(Get-EligibleFunModes)
+    $shuffledIds = @($eligible.Id | Get-Random -Count $eligible.Count)
+    Set-Content -LiteralPath (Get-DomainQueuePath 'FunMode') -Value $shuffledIds -Encoding UTF8
     return $shuffledIds
 }
 
 function Get-NextFunMode {
     $queue = @(
-        Get-Content -LiteralPath $script:activePaths.FunModeQueue |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -in $funModes.Id }
+        Get-Content -LiteralPath (Get-DomainQueuePath 'FunMode') |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -in @(Get-EligibleFunModes).Id }
     )
     if ($queue.Count -eq 0) {
         $queue = @(New-FunModeQueue)
     }
 
     $selectedId = $queue[0]
-    Set-Content -LiteralPath $script:activePaths.FunModeQueue -Value @($queue | Select-Object -Skip 1) -Encoding UTF8
+    Set-Content -LiteralPath (Get-DomainQueuePath 'FunMode') -Value @($queue | Select-Object -Skip 1) -Encoding UTF8
     return @($funModes | Where-Object Id -eq $selectedId)[0]
 }
 
@@ -707,6 +795,7 @@ function Show-ChallengeEditor($owner, $existingChallenge) {
 
     $nameBox = $editor.FindName('ChallengeEditorName')
     $objectiveBox = $editor.FindName('ChallengeEditorObjective')
+    $domainBox = $editor.FindName('ChallengeEditorDomain')
     $trackerList = $editor.FindName('ChallengeEditorTrackers')
     $recordingMode = $editor.FindName('ChallengeEditorRecordingMode')
     $rewardType = $editor.FindName('ChallengeEditorRewardType')
@@ -725,6 +814,7 @@ function Show-ChallengeEditor($owner, $existingChallenge) {
         [pscustomobject]@{ Id='BRSteps:3'; Name='Advance BR by +1.0'; Type='BRSteps'; Steps=3; DefaultText='Advance BR by 1.0.' }
         [pscustomobject]@{ Id='TrackSteps:1'; Name='Advance current weapon track'; Type='TrackSteps'; Steps=1; DefaultText='Advance one weapon stage.' }
     )
+    $domainBox.ItemsSource = $domains
     $rewardType.ItemsSource = $rewardOptions
     $failureOptions = @(
         [pscustomobject]@{ Id='None:0'; Name='Stay at current stage'; Type='None'; Steps=0 }
@@ -777,17 +867,20 @@ function Show-ChallengeEditor($owner, $existingChallenge) {
         $rewardType.SelectedValue = "$($challenge.RewardAction.Type):$($challenge.RewardAction.Steps)"
         & $refreshFailureOptions "$($challenge.FailureAction.Type):$($challenge.FailureAction.Steps)"
         $recordingMode.SelectedValue = $challenge.RecordingMode
+        $domainBox.SelectedValue = $challenge.Domain
     }
     else {
         $rewardType.SelectedValue = 'None:0'
         & $refreshFailureOptions 'None:0'
         $recordingMode.SelectedValue = 'Detailed'
+        $domainBox.SelectedValue = 'Any'
         $rewardText.Text = 'Complete the challenge.'
         [void]$trackers.Add([pscustomobject]@{ Id=[guid]::NewGuid().ToString('N'); Label='Objective completed'; Type='Checkbox'; Target=1; Required=$true })
     }
     if (-not $rewardType.SelectedValue) { $rewardType.SelectedIndex = 0 }
     if (-not $failureType.SelectedValue) { & $refreshFailureOptions 'None:0' }
     if (-not $recordingMode.SelectedValue) { $recordingMode.SelectedValue = 'Detailed' }
+    if (-not $domainBox.SelectedValue) { $domainBox.SelectedValue = 'Any' }
     & $refreshTrackers $null
 
     $rewardType.Add_SelectionChanged({
@@ -843,7 +936,7 @@ function Show-ChallengeEditor($owner, $existingChallenge) {
         $failureOption = $failureType.SelectedItem
         $editor.Tag = [pscustomobject]@{
             Id = if ($existingChallenge) { [string]$existingChallenge.Id } else { 'custom-' + [guid]::NewGuid().ToString('N') }
-            Name=$name; Objective=$objective; Reward=$reward; Trackers=@($trackers)
+            Name=$name; Domain=[string]$domainBox.SelectedValue; Objective=$objective; Reward=$reward; Trackers=@($trackers)
             RecordingMode=[string]$recordingMode.SelectedValue
             RewardAction=[pscustomobject]@{Type=$option.Type;Steps=$option.Steps}
             FailureAction=[pscustomobject]@{Type=$failureOption.Type;Steps=$failureOption.Steps}
@@ -1135,6 +1228,7 @@ function Show-SessionWindow($owner, $challenge, [string] $nation, [string] $batt
 }
 
 Initialize-AppData
+Load-DomainSettings
 Load-ContentLibraries
 Load-ProgressionCatalog
 
@@ -1143,6 +1237,7 @@ $reader = [System.Xml.XmlNodeReader]::new($xaml)
 $window = [Windows.Markup.XamlReader]::Load($reader)
 
 $profileSelector = $window.FindName('ProfileSelector')
+$domainSelector = $window.FindName('DomainSelector')
 $manageButton = $window.FindName('ManageButton')
 $resetAllButton = $window.FindName('ResetAllButton')
 $rollButton = $window.FindName('RollButton')
@@ -1187,7 +1282,7 @@ $nationImage.Source = New-BitmapImage $emptyImagePath
 
 $updateRemainingText = {
     $remaining = @(
-        Get-Content -LiteralPath $script:activePaths.Queue |
+        Get-Content -LiteralPath (Get-DomainQueuePath 'Nation') |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     ).Count
     $remainingText.Text = if ($remaining -eq 0) {
@@ -1200,7 +1295,7 @@ $updateRemainingText = {
 
 $updateChallengeRemainingText = {
     $remaining = @(
-        Get-Content -LiteralPath $script:activePaths.ChallengeQueue |
+        Get-Content -LiteralPath (Get-DomainQueuePath 'Challenge') |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     ).Count
     $challengeRemainingText.Text = if ($remaining -eq 0) {
@@ -1213,7 +1308,7 @@ $updateChallengeRemainingText = {
 
 $updateFunModeRemainingText = {
     $remaining = @(
-        Get-Content -LiteralPath $script:activePaths.FunModeQueue |
+        Get-Content -LiteralPath (Get-DomainQueuePath 'FunMode') |
             Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     ).Count
     $funModeRemainingText.Text = if ($remaining -eq 0) {
@@ -1255,6 +1350,25 @@ $clearCurrentFunMode = {
     $funModeRule.Text = 'Draw a lineup constraint for additional questionable decisions.'
 }
 
+$applyDomain = {
+    param([string] $domain, [bool] $save = $true)
+    $domain = Normalize-Domain $domain
+    $script:activeSettings.Domain = $domain
+    $eligibleTracks = @(Get-EligibleProgressionTracks $domain)
+    if ($eligibleTracks.Count -gt 0 -and [string]$script:activeSettings.CampaignTrackId -notin @($eligibleTracks.Id)) {
+        $script:activeSettings.CampaignTrackId = [string]$eligibleTracks[0].Id
+        $script:activeSettings.CampaignStageIndex = 0
+    }
+    if ($script:currentChallenge -and -not (Test-ContentDomain $script:currentChallenge $domain)) { & $clearCurrentChallenge }
+    & $clearCurrentFunMode
+    $nationName.Text = 'Ready?'
+    $nationImage.Source = New-BitmapImage $emptyImagePath
+    & $updateRemainingText
+    & $updateChallengeRemainingText
+    & $updateFunModeRemainingText
+    if ($save) { Save-ProfileSettings ([bool]$script:activeSettings.ClearSequenceOnExit) ([double]$script:activeSettings.MinimumBR) ([double]$script:activeSettings.MaximumBR) }
+}
+
 $setActiveProfile = {
     param([string] $profileId)
 
@@ -1268,6 +1382,10 @@ $setActiveProfile = {
     Save-ProfileStore
 
     $script:activeSettings = Get-ProfileSettings
+    $script:domainChanging = $true
+    $domainSelector.SelectedValue = [string]$script:activeSettings.Domain
+    $script:domainChanging = $false
+    & $applyDomain ([string]$script:activeSettings.Domain) $false
     $campaignTrack = @($script:progressionCatalog.Tracks | Where-Object { $_.Id -eq $script:activeSettings.CampaignTrackId } | Select-Object -First 1)
     if ($campaignTrack.Count -eq 0) {
         $script:activeSettings.CampaignTrackId = 'ground-gun'
@@ -1281,7 +1399,7 @@ $setActiveProfile = {
     & $updateRollSessionAvailability
     $nationName.Text = 'Ready?'
     $brResult.Text = if ([string]::IsNullOrWhiteSpace([string]$script:activeSettings.CurrentBRResult)) { [string][char]0x2014 } else { [string]$script:activeSettings.CurrentBRResult }
-    $restoredChallenge = @($script:challenges | Where-Object { $_.Id -eq [string]$script:activeSettings.CurrentChallengeId } | Select-Object -First 1)
+    $restoredChallenge = @($script:challenges | Where-Object { $_.Id -eq [string]$script:activeSettings.CurrentChallengeId -and (Test-ContentDomain $_ $script:activeSettings.Domain) } | Select-Object -First 1)
     if ($restoredChallenge.Count -gt 0) {
         $script:currentChallenge = $restoredChallenge[0]
         $challengeName.Text = $script:currentChallenge.Name
@@ -1310,6 +1428,7 @@ $script:activePaths = $null
 $script:activeSettings = $null
 $profileSelector.DisplayMemberPath = 'Name'
 $profileSelector.SelectedValuePath = 'Id'
+$domainSelector.ItemsSource = $domains
 
 $refreshProfileSelector = {
     param([string] $selectedProfileId)
@@ -1333,6 +1452,12 @@ $profileSelector.Add_SelectionChanged({
     }
 })
 
+$domainSelector.Add_SelectionChanged({
+    if (-not $script:domainChanging -and $script:activeSettings -and $domainSelector.SelectedValue) {
+        & $applyDomain ([string]$domainSelector.SelectedValue) $true
+    }
+})
+
 $manageButton.Add_Click({
     [xml]$manageXaml = Get-Content -LiteralPath $manageXamlFile -Raw
     $manageReader = [System.Xml.XmlNodeReader]::new($manageXaml)
@@ -1350,6 +1475,9 @@ $manageButton.Add_Click({
     $manageCampaignStage = $manageWindow.FindName('ManageCampaignStage')
     $manageResetBRButton = $manageWindow.FindName('ManageResetBRButton')
     $manageClearOnExit = $manageWindow.FindName('ManageClearOnExit')
+    $manageEligibilityDomain = $manageWindow.FindName('ManageEligibilityDomain')
+    $manageDomainNationPanel = $manageWindow.FindName('ManageDomainNationPanel')
+    $restoreDomainEligibilityButton = $manageWindow.FindName('RestoreDomainEligibilityButton')
     $sessionRollNation = $manageWindow.FindName('SessionRollNation')
     $sessionRollBR = $manageWindow.FindName('SessionRollBR')
     $sessionRollChallenge = $manageWindow.FindName('SessionRollChallenge')
@@ -1391,10 +1519,44 @@ $manageButton.Add_Click({
         [pscustomobject]@{ Id='Exact'; Name='Specific BR (for example 4.3)' }
         [pscustomobject]@{ Id='Bracket'; Name='Whole BR bracket (for example 4.0-4.7)' }
     )
-    $manageCampaignTrack.ItemsSource = @($script:progressionCatalog.Tracks)
+    $manageCampaignTrack.ItemsSource = @(Get-EligibleProgressionTracks $script:activeSettings.Domain)
     $manageProgressionTrack.ItemsSource = @($script:progressionCatalog.Tracks)
     $progressionSourceText.Text = "War Thunder $($script:progressionCatalog.Source.GameVersion)"
     $script:manageChanging = $false
+    $manageEligibilityDomain.ItemsSource = @($domains | Where-Object Id -ne 'Any')
+
+    $refreshDomainEligibility = {
+        $manageDomainNationPanel.Children.Clear()
+        $domain = Normalize-Domain ([string]$manageEligibilityDomain.SelectedValue)
+        if ($domain -eq 'Any') { return }
+        foreach ($nation in @($nations.Keys)) {
+            $checkBox = [System.Windows.Controls.CheckBox]::new()
+            $checkBox.Content = $nation
+            $checkBox.Tag = $nation
+            $checkBox.FontSize = 14
+            $checkBox.Margin = [System.Windows.Thickness]::new(0,0,0,10)
+            $checkBox.IsChecked = $nation -in @($script:domainNationEligibility[$domain])
+            $checkBox.Add_Click({
+                $clicked = $this
+                $selectedDomain = Normalize-Domain ([string]$manageEligibilityDomain.SelectedValue)
+                $enabled = @($manageDomainNationPanel.Children | Where-Object IsChecked | ForEach-Object { [string]$_.Tag })
+                if ($enabled.Count -eq 0) {
+                    $clicked.IsChecked = $true
+                    [System.Windows.MessageBox]::Show('At least one nation must remain enabled for a domain.', 'Thunder Roulette') | Out-Null
+                    return
+                }
+                $script:domainNationEligibility[$selectedDomain] = $enabled
+                Save-DomainSettings
+                if ([string]$script:activeSettings.Domain -eq $selectedDomain) {
+                    Reset-NationQueue
+                    $nationName.Text = 'Ready?'
+                    $nationImage.Source = New-BitmapImage $emptyImagePath
+                    & $updateRemainingText
+                }
+            })
+            $manageDomainNationPanel.Children.Add($checkBox) | Out-Null
+        }
+    }
 
     $getSelectedProgressionTrack = {
         if (-not $manageProgressionTrack.SelectedValue) { return $null }
@@ -1428,6 +1590,9 @@ $manageButton.Add_Click({
 
     $refreshContentLists = {
         param([string] $challengeId, [string] $funModeId)
+        foreach ($item in @($script:challenges) + @($script:funModes)) { $item | Add-Member -NotePropertyName DisplayLabel -NotePropertyValue "[$($item.Domain)] $($item.Name)" -Force }
+        $manageChallengeList.DisplayMemberPath = 'DisplayLabel'
+        $manageFunModeList.DisplayMemberPath = 'DisplayLabel'
         $manageChallengeList.ItemsSource = $null
         $manageChallengeList.ItemsSource = @($script:challenges)
         $manageFunModeList.ItemsSource = $null
@@ -1528,6 +1693,7 @@ $manageButton.Add_Click({
 
     $loadManageSettings = {
         $script:manageChanging = $true
+        $manageCampaignTrack.ItemsSource = @(Get-EligibleProgressionTracks $script:activeSettings.Domain)
         $manageMinimumBR.SelectedItem = [double]$script:activeSettings.MinimumBR
         $manageMaximumBR.SelectedItem = [double]$script:activeSettings.MaximumBR
         $manageBRRollMode.SelectedValue = [string]$script:activeSettings.BRRollMode
@@ -1578,6 +1744,8 @@ $manageButton.Add_Click({
     & $loadManageSettings
     & $refreshSessionHistory
     & $refreshContentLists $null $null
+    $manageEligibilityDomain.SelectedValue = if ([string]$script:activeSettings.Domain -eq 'Any') { 'Ground' } else { [string]$script:activeSettings.Domain }
+    & $refreshDomainEligibility
     $manageProgressionTrack.SelectedIndex = 0
     & $refreshProgressionStages $null
 
@@ -1588,6 +1756,15 @@ $manageButton.Add_Click({
             & $loadManageSettings
             & $refreshSessionHistory
         }
+    })
+
+    $manageEligibilityDomain.Add_SelectionChanged({ & $refreshDomainEligibility })
+    $restoreDomainEligibilityButton.Add_Click({
+        foreach ($domain in @('Ground','Air','Naval')) { $script:domainNationEligibility[$domain] = @($defaultDomainNationEligibility[$domain]) }
+        Save-DomainSettings
+        & $refreshDomainEligibility
+        Reset-NationQueue
+        & $updateRemainingText
     })
 
     $clearHistoryButton.Add_Click({
@@ -1790,6 +1967,10 @@ $manageButton.Add_Click({
     $useSelectedChallengeButton.Add_Click({
         $card = $manageChallengeList.SelectedItem
         if (-not $card) { return }
+        if (-not (Test-ContentDomain $card $script:activeSettings.Domain)) {
+            [System.Windows.MessageBox]::Show("'$($card.Name)' is a $($card.Domain) challenge. Switch the main domain selector first.", 'Thunder Roulette') | Out-Null
+            return
+        }
         $script:currentChallenge = $card
         $script:activeSettings.CurrentChallengeId = [string]$card.Id
         $challengeName.Text = [string]$card.Name
@@ -1802,6 +1983,10 @@ $manageButton.Add_Click({
     $useSelectedFunModeButton.Add_Click({
         $card = $manageFunModeList.SelectedItem
         if (-not $card) { return }
+        if (-not (Test-ContentDomain $card $script:activeSettings.Domain)) {
+            [System.Windows.MessageBox]::Show("'$($card.Name)' is a $($card.Domain) fun mode. Switch the main domain selector first.", 'Thunder Roulette') | Out-Null
+            return
+        }
         $funModeName.Text = [string]$card.Name
         $funModeRule.Text = [string]$card.Rule
     })
@@ -1841,7 +2026,8 @@ $manageButton.Add_Click({
         if ([string]::IsNullOrWhiteSpace($name)) { return }
         $rule = [Microsoft.VisualBasic.Interaction]::InputBox('What lineup or playstyle rule applies?', 'Fun-mode rule', '').Trim()
         if ([string]::IsNullOrWhiteSpace($rule)) { return }
-        $card = [pscustomobject]@{ Id = 'custom-' + [guid]::NewGuid().ToString('N'); Name = $name; Rule = $rule }
+        $domain = Normalize-Domain ([Microsoft.VisualBasic.Interaction]::InputBox('Vehicle domain: Any, Ground, Air, or Naval', 'Fun-mode domain', 'Any').Trim())
+        $card = [pscustomobject]@{ Id = 'custom-' + [guid]::NewGuid().ToString('N'); Name = $name; Rule = $rule; Domain = $domain }
         $script:funModes = @($script:funModes) + $card
         Save-ContentLibraries
         & $refreshContentLists $null $card.Id
@@ -1854,7 +2040,8 @@ $manageButton.Add_Click({
         if ([string]::IsNullOrWhiteSpace($name)) { return }
         $rule = [Microsoft.VisualBasic.Interaction]::InputBox('What lineup or playstyle rule applies?', 'Fun-mode rule', $card.Rule).Trim()
         if ([string]::IsNullOrWhiteSpace($rule)) { return }
-        $card.Name = $name; $card.Rule = $rule
+        $domain = Normalize-Domain ([Microsoft.VisualBasic.Interaction]::InputBox('Vehicle domain: Any, Ground, Air, or Naval', 'Fun-mode domain', $card.Domain).Trim())
+        $card.Name = $name; $card.Rule = $rule; $card.Domain = $domain
         Save-ContentLibraries
         & $refreshContentLists $null $card.Id
     })
@@ -1873,27 +2060,27 @@ $manageButton.Add_Click({
         $script:challenges = @($defaultChallenges | ForEach-Object { ConvertTo-Challenge $_ })
         Save-ContentLibraries
         & $refreshCurrentChallengeFromLibrary
-        Clear-Content -LiteralPath $script:activePaths.ChallengeQueue
+        Clear-Content -LiteralPath (Get-DomainQueuePath 'Challenge')
         & $refreshContentLists $null $null
         & $updateChallengeRemainingText
     })
 
     $restoreFunModesButton.Add_Click({
         if ([System.Windows.MessageBox]::Show('Replace all fun modes with the shipped defaults?', 'Restore fun modes', [System.Windows.MessageBoxButton]::YesNo) -ne [System.Windows.MessageBoxResult]::Yes) { return }
-        $script:funModes = @($defaultFunModes | ForEach-Object { [pscustomobject]@{ Id = $_.Id; Name = $_.Name; Rule = $_.Rule } })
+        $script:funModes = @($defaultFunModes | ForEach-Object { ConvertTo-FunMode $_ })
         Save-ContentLibraries
-        Clear-Content -LiteralPath $script:activePaths.FunModeQueue
+        Clear-Content -LiteralPath (Get-DomainQueuePath 'FunMode')
         & $refreshContentLists $null $null
         & $updateFunModeRemainingText
     })
 
     $resetChallengeDeckButton.Add_Click({
-        Clear-Content -LiteralPath $script:activePaths.ChallengeQueue
+        Clear-Content -LiteralPath (Get-DomainQueuePath 'Challenge')
         & $clearCurrentChallenge
         & $updateChallengeRemainingText
     })
     $resetFunModeDeckButton.Add_Click({
-        Clear-Content -LiteralPath $script:activePaths.FunModeQueue
+        Clear-Content -LiteralPath (Get-DomainQueuePath 'FunMode')
         & $clearCurrentFunMode
         & $updateFunModeRemainingText
     })
@@ -1965,8 +2152,8 @@ $resetAllButton.Add_Click({
     if ([System.Windows.MessageBox]::Show('Reset the current profile roulette state? Profiles, custom content, history, and campaign progress will be kept.', 'Reset all', [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question) -ne [System.Windows.MessageBoxResult]::Yes) { return }
     Reset-NationQueue
     Reset-BRQueue
-    Clear-Content -LiteralPath $script:activePaths.ChallengeQueue
-    Clear-Content -LiteralPath $script:activePaths.FunModeQueue
+    Clear-Content -LiteralPath (Get-DomainQueuePath 'Challenge')
+    Clear-Content -LiteralPath (Get-DomainQueuePath 'FunMode')
     $nationName.Text = 'Ready?'
     $nationImage.Source = New-BitmapImage $emptyImagePath
     $script:activeSettings.CurrentBRResult = ''
@@ -2003,7 +2190,7 @@ $startSessionButton.Add_Click({
     $endingStage = if ($enabledStages.Count -gt 0) { $enabledStages[[math]::Min([int]$script:activeSettings.CampaignStageIndex, $enabledStages.Count - 1)].Label } else { $null }
     Add-SessionHistoryRecord ([pscustomobject]@{
         Id=[guid]::NewGuid().ToString('N'); ChallengeId=$script:currentChallenge.Id; ChallengeName=$script:currentChallenge.Name
-        Nation=$nation; StartingBR=$(if ($challengeUsesBR) { if (-not [string]::IsNullOrWhiteSpace($battleRating)) { $battleRating } else { Get-CampaignBRDisplay } } else { $null }); FunMode=$funMode; TrackId=$(if ($challengeUsesTrack) { $track.Id } else { $null })
+        Domain=[string]$script:activeSettings.Domain; Nation=$nation; StartingBR=$(if ($challengeUsesBR) { if (-not [string]::IsNullOrWhiteSpace($battleRating)) { $battleRating } else { Get-CampaignBRDisplay } } else { $null }); FunMode=$funMode; TrackId=$(if ($challengeUsesTrack) { $track.Id } else { $null })
         StartingStage=$(if ($challengeUsesTrack) { $startingStage } else { $null }); EndingStage=$(if ($challengeUsesTrack) { $endingStage } else { $null })
         EndingBR=$(if ($challengeUsesBR) { Get-CampaignBRDisplay } else { $null })
         Outcome=$result.Outcome; StartedAt=$result.StartedAt; EndedAt=$result.EndedAt
@@ -2028,12 +2215,39 @@ if ($ValidateOnly) {
         throw 'Challenge IDs must be unique.'
     }
     foreach ($challenge in @($challenges)) {
+        if ($challenge.Domain -notin @('Any','Ground','Air','Naval')) { throw "Challenge '$($challenge.Name)' has an invalid domain." }
         if (-not $challenge.PSObject.Properties['FailureAction'] -or $challenge.FailureAction.Type -notin @('None','BRStepsDown','TrackStepsDown')) {
             throw "Challenge '$($challenge.Name)' has an invalid failure action."
         }
     }
     if (@($funModes.Id | Select-Object -Unique).Count -ne $funModes.Count) {
         throw 'Fun-mode IDs must be unique.'
+    }
+    foreach ($funMode in @($funModes)) {
+        if ($funMode.Domain -notin @('Any','Ground','Air','Naval')) { throw "Fun mode '$($funMode.Name)' has an invalid domain." }
+    }
+    foreach ($domain in @('Ground','Air','Naval')) {
+        if (@(Get-EligibleNations $domain).Count -eq 0) { throw "Domain '$domain' must have at least one eligible nation." }
+    }
+    $validationDomainDirectory = Join-Path ([IO.Path]::GetTempPath()) ("thunder-roulette-domain-{0}" -f [guid]::NewGuid().ToString('N'))
+    $originalDirectory = $script:activePaths.Directory
+    $originalDomain = [string]$script:activeSettings.Domain
+    try {
+        New-Item -ItemType Directory -Path $validationDomainDirectory | Out-Null
+        $script:activePaths.Directory = $validationDomainDirectory
+        $script:activeSettings.Domain = 'Naval'
+        $navalRolls = @(1..(@(Get-EligibleNations 'Naval').Count) | ForEach-Object { Get-NextNation })
+        if (@($navalRolls | Select-Object -Unique).Count -ne @(Get-EligibleNations 'Naval').Count) { throw 'Naval nation sequence repeated before exhausting its eligibility list.' }
+        if (@($navalRolls | Where-Object { $_ -notin @(Get-EligibleNations 'Naval') }).Count -gt 0) { throw 'Naval nation sequence returned an ineligible nation.' }
+        $challengeRoll = Get-NextChallenge
+        if (-not (Test-ContentDomain $challengeRoll 'Naval')) { throw 'Naval challenge deck returned a challenge for another domain.' }
+        $funModeRoll = Get-NextFunMode
+        if (-not (Test-ContentDomain $funModeRoll 'Naval')) { throw 'Naval fun-mode deck returned a mode for another domain.' }
+    }
+    finally {
+        $script:activePaths.Directory = $originalDirectory
+        $script:activeSettings.Domain = $originalDomain
+        if (Test-Path -LiteralPath $validationDomainDirectory) { Remove-Item -LiteralPath $validationDomainDirectory -Recurse -Force }
     }
     if (@($script:progressionCatalog.Tracks).Count -ne 9) {
         throw 'The default progression catalog must contain nine Air/Ground/Naval weapon tracks.'
@@ -2101,7 +2315,7 @@ if ($ValidateOnly) {
     $validationManageWindow = [Windows.Markup.XamlReader]::Load($validationManageReader)
     foreach ($controlName in @(
         'ManageProfileList', 'ManageMinimumBR', 'ManageMaximumBR', 'ManageBRRollMode', 'ManageResetBRButton',
-        'ManageCampaignTrack', 'ManageCampaignStage',
+        'ManageCampaignTrack', 'ManageCampaignStage', 'ManageEligibilityDomain', 'ManageDomainNationPanel', 'RestoreDomainEligibilityButton',
         'SessionRollNation', 'SessionRollBR', 'SessionRollChallenge', 'SessionRollFunMode',
         'ManageProgressionTrack', 'ManageProgressionStageList', 'AddExactStageButton', 'AddRangeStageButton',
         'EditStageButton', 'ToggleStageButton', 'MoveStageUpButton', 'MoveStageDownButton', 'DeleteStageButton', 'RestoreProgressionButton',
@@ -2119,7 +2333,7 @@ if ($ValidateOnly) {
             Path = $challengeEditorXamlFile
             Name = 'Challenge editor'
             Controls = @(
-                'ChallengeEditorName', 'ChallengeEditorObjective', 'ChallengeEditorTrackers',
+                'ChallengeEditorName', 'ChallengeEditorObjective', 'ChallengeEditorDomain', 'ChallengeEditorTrackers',
                 'AddCounterTrackerButton', 'AddCheckboxTrackerButton', 'EditTrackerButton', 'DeleteTrackerButton',
                 'ChallengeEditorRecordingMode', 'ChallengeEditorRewardType', 'ChallengeEditorFailureType', 'ChallengeEditorRewardText', 'ChallengeEditorSaveButton', 'ChallengeEditorCancelButton'
             )

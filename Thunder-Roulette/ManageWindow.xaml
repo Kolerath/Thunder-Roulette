@@ -49,6 +49,21 @@
                     </StackPanel>
                 </Grid>
             </TabItem>
+            <TabItem Header="Domains">
+                <Grid Margin="22">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="NATION ELIGIBILITY" FontSize="12" FontWeight="Bold" Foreground="#475569" />
+                        <TextBlock Text="Choose which nations can be rolled in each vehicle domain. Any mode always includes every nation. At least one nation must remain enabled."
+                                   TextWrapping="Wrap" Foreground="#64748B" Margin="0,7,0,16" />
+                    </StackPanel>
+                    <ComboBox Name="ManageEligibilityDomain" Grid.Row="1" Width="220" Height="32" HorizontalAlignment="Left"
+                              DisplayMemberPath="Name" SelectedValuePath="Id" />
+                    <WrapPanel Name="ManageDomainNationPanel" Grid.Row="2" Margin="0,18,0,0" Orientation="Vertical" />
+                    <Button Name="RestoreDomainEligibilityButton" Grid.Row="3" Content="Restore domain defaults" Padding="14,7"
+                            HorizontalAlignment="Left" Margin="0,12,0,0" />
+                </Grid>
+            </TabItem>
             <TabItem Header="Roll Session">
                 <StackPanel Margin="22">
                     <TextBlock Text="ROLL SESSION MODULES" FontSize="12" FontWeight="Bold" Foreground="#475569" />
