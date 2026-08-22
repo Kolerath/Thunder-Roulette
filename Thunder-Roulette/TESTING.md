@@ -1,4 +1,4 @@
-# Thunder Roulette v1.5 Manual Test Checklist
+# Thunder Roulette Manual Test Checklist
 
 Use a disposable test profile where possible. Record failures with the selected
 profile, BR limits, roll style, challenge reward/punishment, and the action that
@@ -13,6 +13,20 @@ triggered the problem.
 - [x] A previously rolled BR is restored for the selected profile.
 - [x] Switching profiles immediately restores each profile's own BR result and roll style.
 - [x] A newly created profile appears immediately in the main profile selector.
+
+## 1A. Vehicle domains
+
+- [ ] Existing profiles open in **Any mode** and retain their previous Any-mode deck.
+- [x] Switching profiles preserves the shared Any, Ground, Air, or Naval session context.
+- [ ] Switching domains clears the visible nation, challenge, and fun mode without clearing BR progress.
+- [ ] Ground, Air, and Naval nation rolls never repeat before exhausting that domain's eligible nations.
+- [ ] Switching away from a partly used domain deck and back resumes that deck.
+- [ ] Naval defaults roll USA, Germany, USSR, Great Britain, Japan, Italy, or France only.
+- [ ] Changing Naval eligibility in **Manage > Domains** immediately affects Naval nation rolls.
+- [ ] The final enabled nation cannot be unchecked, and restoring defaults restores all shipped lists.
+- [ ] Ground/Air/Naval challenge and fun-mode draws include matching cards plus cards tagged **Any**, never another domain's cards.
+- [ ] A domain-specific profile offers only matching weapon campaign tracks; **Any** offers all nine tracks.
+- [ ] Challenge editing persists its domain tag; custom fun-mode creation and editing persist theirs.
 
 ## 2. Specific BR rolls
 
