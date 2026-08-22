@@ -76,7 +76,7 @@ The Progression tab provides editable Air, Ground, and Naval campaigns with
 separate Gun, Rocket, and Missile tracks. Exact diameters and user-defined ranges
 can be added, reordered, enabled, disabled, or restored from the shipped catalog.
 
-For illustrated instructions, open `Thunder-Roulette-v1.5-User-Guide.pdf`.
+For illustrated instructions, open `Thunder-Roulette-v1.6-User-Guide.pdf`.
 
 ## Launch the packaged app
 

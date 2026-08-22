@@ -128,13 +128,14 @@ triggered the problem.
 - [x] Launch the packaged `Thunder-Roulette.exe` from a clean extracted folder.
 - [x] Confirm the package contains no `Data`, profiles, history, `.git`, temporary files, or personal paths.
 - [x] Confirm `README.md` instructs packaged users to launch `Thunder-Roulette.exe`.
-- [x] Confirm the ZIP and executable versions agree on v1.5.0.
-- [ ] Confirm the Git tag and release title agree on v1.5.0 when publishing.
+- [x] Confirm the ZIP and executable versions agree on v1.6.0.
+- [ ] Confirm the Git tag and release title agree on v1.6.0 when publishing.
 
 Release-candidate evidence:
 
-- ZIP: `dist/Thunder-Roulette-v1.5.0.zip`
-- SHA-256: `994850A974EDC02296C2AD76EBFB5023DD036DF80B17E5023A419D6DC0286CCB`
+- ZIP: `dist/Thunder-Roulette-v1.6.0.zip`
+- ZIP SHA-256: `2B96A7BF1432BA7D417EEAA807F4ECCD898DDFE1E987AE63EF720C897CC1A5C2`
+- EXE SHA-256: `70E28356D08B090423A99B43B494D858B3CDCD934E1B7D5CDFF0A0448B5867D1`
 - Package audit: 22 allowlisted files; no runtime data, source script, personal paths, or credential-like text.
 - Clean extraction smoke launch: passed; the executable remained running and created fresh runtime data outside the ZIP.
 
@@ -142,6 +143,6 @@ Release-candidate evidence:
 
 - [x] All critical sections pass: Startup, BR rolls, progression, maximum completion, history, and packaged launch.
 - [x] No known non-critical issues remain to document in the release notes.
-- [x] Release candidate approved for v1.5.0.
+- [x] Release candidate approved for v1.6.0.
 
 Bottomnotes:
