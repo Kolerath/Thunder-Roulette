@@ -13,6 +13,8 @@ triggered the problem.
 - [x] A previously rolled BR is restored for the selected profile.
 - [x] Switching profiles immediately restores each profile's own BR result and roll style.
 - [x] A newly created profile appears immediately in the main profile selector.
+- [x] Maximize the main window and confirm the complete interface scales uniformly without stretched gaps or detached controls.
+- [x] Restore and resize the main window smaller; confirm all controls remain visible and preserve their proportions.
 
 ## 1A. Vehicle domains
 
@@ -128,14 +130,14 @@ triggered the problem.
 - [x] Launch the packaged `Thunder-Roulette.exe` from a clean extracted folder.
 - [x] Confirm the package contains no `Data`, profiles, history, `.git`, temporary files, or personal paths.
 - [x] Confirm `README.md` instructs packaged users to launch `Thunder-Roulette.exe`.
-- [x] Confirm the ZIP and executable versions agree on v1.6.0.
-- [ ] Confirm the Git tag and release title agree on v1.6.0 when publishing.
+- [x] Confirm the ZIP and executable versions agree on v1.6.1.
+- [ ] Confirm the Git tag and release title agree on v1.6.1 when publishing.
 
 Release-candidate evidence:
 
-- ZIP: `dist/Thunder-Roulette-v1.6.0.zip`
-- ZIP SHA-256: `2B96A7BF1432BA7D417EEAA807F4ECCD898DDFE1E987AE63EF720C897CC1A5C2`
-- EXE SHA-256: `70E28356D08B090423A99B43B494D858B3CDCD934E1B7D5CDFF0A0448B5867D1`
+- ZIP: `dist/Thunder-Roulette-v1.6.1.zip`
+- ZIP SHA-256: `D4D63E5038DED6512C2039EADD42B37C7DE3E0F6C2B971B5384D8520D0D877C7`
+- EXE SHA-256: `CBA0BBE4EC4BF3EF4769B806FF4F94CC9A661D12FCBCC473CF35E9BE9DF572FE`
 - Package audit: 22 allowlisted files; no runtime data, source script, personal paths, or credential-like text.
 - Clean extraction smoke launch: passed; the executable remained running and created fresh runtime data outside the ZIP.
 
@@ -143,6 +145,6 @@ Release-candidate evidence:
 
 - [x] All critical sections pass: Startup, BR rolls, progression, maximum completion, history, and packaged launch.
 - [x] No known non-critical issues remain to document in the release notes.
-- [x] Release candidate approved for v1.6.0.
+- [x] Release candidate approved for v1.6.1.
 
 Bottomnotes:
